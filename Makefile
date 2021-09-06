@@ -24,10 +24,10 @@ patch:
 kube-lint: kube-linter
 	$(KUBELINTER) lint $(YAMLFILES)
 
-lint: golangci-lint
+lint: patch golangci-lint
 	$(GOLANGCILINT) run -v --timeout 5m0s
 
-verify: fmt vet
+verify: patch fmt vet
 unit:
 	@echo "TODO UNIT TEST"
 
