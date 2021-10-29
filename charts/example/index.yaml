@@ -3,9 +3,9 @@ entries:
   centos-simple-kmod:
   - apiVersion: v2
     appVersion: 1.0.0
-    created: "2021-10-27T03:24:38.79487999-05:00"
+    created: "2021-10-29T18:02:34.862916615+02:00"
     description: Simple kmod will deploy a simple kmod driver-container
-    digest: dfd442abb529ed358c4f51ef05277055b8e3a44522851a1123cc5a3b9c3ae94e
+    digest: dbb2dd4091abbb8cae0bd2be4b3f32f00d1a8a22433fd0de3e7e84634a7dad87
     icon: https://avatars.githubusercontent.com/u/55542927
     name: centos-simple-kmod
     type: application
@@ -15,9 +15,9 @@ entries:
   connaisseur:
   - apiVersion: v2
     appVersion: 1.16.0
-    created: "2021-10-27T03:24:38.795568309-05:00"
+    created: "2021-10-29T18:02:34.863705298+02:00"
     description: A Helm chart for the Connaisseur Admission Controller
-    digest: fade51aa9fc8f656fbb9106242ed46fb1cae596c087b4af61848c82b61bcb8c6
+    digest: 8527d8208236d8c5949243cdde10aa5be0f613bdc582f8d176eb8a52dac583cc
     name: connaisseur
     type: application
     urls:
@@ -26,9 +26,9 @@ entries:
   multi-build:
   - apiVersion: v2
     appVersion: 1.0.0
-    created: "2021-10-27T03:24:38.795780511-05:00"
+    created: "2021-10-29T18:02:34.863929177+02:00"
     description: Showcase how to use multiple Builds with different DTKs
-    digest: 3fe0fa168394bac3a90a73549e560a9e975db70075e72fe3e2cffb75c3a25795
+    digest: 988c42b7d7fd0ff352a2f5a796e434d82d4843a230c382a4aa450c50147ddcfd
     icon: https://avatars.githubusercontent.com/u/55542927
     name: multi-build
     type: application
@@ -38,9 +38,9 @@ entries:
   ping-pong:
   - apiVersion: v2
     appVersion: 1.0.0
-    created: "2021-10-27T03:24:38.796007807-05:00"
+    created: "2021-10-29T18:02:34.86421288+02:00"
     description: Simple go app to showcase cert-manager intergration
-    digest: 53f7b98c2fd021b4ea23317c779d45f7e7236e0227a47c72fac62b9b33ecb9a8
+    digest: 22cc983498fcabedbdb3d2b04acfe6d0c3c36bdf4a95339ec537548734cef08a
     icon: https://avatars.githubusercontent.com/u/55542927
     name: ping-pong
     type: application
@@ -50,13 +50,13 @@ entries:
   simple-kmod:
   - apiVersion: v2
     appVersion: 1.0.0
-    created: "2021-10-27T03:24:38.796382936-05:00"
+    created: "2021-10-29T18:02:34.86438738+02:00"
     description: Simple kmod will deploy a simple kmod driver-container
-    digest: 1f9ea633e11736f01e709919e633989ae62832868b3ca7669a4cfe9b51812f16
+    digest: 96e835424ef98c62c0559ca647ba4c4a5d2e9db1bfbef39867e1068fb1fdec36
     icon: https://avatars.githubusercontent.com/u/55542927
     name: simple-kmod
     type: application
     urls:
     - file:///charts/example/simple-kmod-0.0.1.tgz
     version: 0.0.1
-generated: "2021-10-27T03:24:38.79459362-05:00"
+generated: "2021-10-29T18:02:34.862589497+02:00"
