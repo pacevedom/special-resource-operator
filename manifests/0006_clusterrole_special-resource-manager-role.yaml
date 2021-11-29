@@ -1,10 +1,8 @@
-
----
 apiVersion: rbac.authorization.k8s.io/v1
 kind: ClusterRole
 metadata:
   creationTimestamp: null
-  name: manager-role
+  name: special-resource-manager-role
 rules:
 - apiGroups:
   - ""
@@ -460,6 +458,30 @@ rules:
 - apiGroups:
   - config.openshift.io
   resources:
+  - clusteroperators
+  verbs:
+  - create
+  - delete
+  - get
+  - list
+  - patch
+  - update
+  - watch
+- apiGroups:
+  - config.openshift.io
+  resources:
+  - clusteroperators/status
+  verbs:
+  - create
+  - delete
+  - get
+  - list
+  - patch
+  - update
+  - watch
+- apiGroups:
+  - config.openshift.io
+  resources:
   - clusterversions
   verbs:
   - get
@@ -887,10 +909,8 @@ rules:
   resources:
   - clusterroles
   verbs:
-  - bind
   - create
   - delete
-  - escalate
   - get
   - list
   - patch
@@ -913,10 +933,8 @@ rules:
   resources:
   - roles
   verbs:
-  - bind
   - create
   - delete
-  - escalate
   - get
   - list
   - patch

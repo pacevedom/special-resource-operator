@@ -10,6 +10,7 @@ require (
 	github.com/mitchellh/hashstructure/v2 v2.0.1
 	github.com/onsi/ginkgo/v2 v2.1.1
 	github.com/onsi/gomega v1.17.0
+	github.com/oliveagle/jsonpath v0.0.0-20180606110733-2e52cf6e6852
 	github.com/openshift/api v0.0.0-20210924154557-a4f696157341
 	github.com/openshift/client-go v0.0.0-20210916133943-9acee1a0fb83
 	github.com/openshift/machine-config-operator v0.0.1-0.20210514234214-c415ce6aed25

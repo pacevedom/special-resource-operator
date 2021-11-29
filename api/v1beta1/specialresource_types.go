@@ -175,6 +175,65 @@ type SpecialResourceList struct {
 	Items []SpecialResource `json:"items"`
 }
 
+type SpecialResourceModuleWatch struct {
+	// +kubebuilder:validation:Required
+	ApiVersion string `json:"apiVersion"`
+	// +kubebuilder:validation:Required
+	Kind string `json:"kind"`
+	// +kubebuilder:validation:Required
+	Name string `json:"name"`
+	// +kubebuilder:validation:Optional
+	Namespace string `json:"namespace"`
+	// +kubebuilder:validation:Required
+	Path string `json:"path"`
+}
+
+type SpecialResourceModuleSpec struct {
+	// +kubebuilder:validation:Required
+	Chart helmerv1beta1.HelmChart `json:"chart"`
+	// +kubebuilder:validation:Required
+	Namespace string `json:"namespace"`
+	// +kubebuilder:validation:Optional
+	// +kubebuilder:pruning:PreserveUnknownFields
+	// +kubebuilder:validation:EmbeddedResource
+	Set unstructured.Unstructured `json:"set,omitempty"`
+	// +kubebuilder:validation:Optional
+	DriverContainer SpecialResourceDriverContainer `json:"driverContainer,omitempty"`
+	// +kubebuilder:validation:Required
+	Watch []SpecialResourceModuleWatch `json:"watch"`
+}
+type SpecialResourceModuleVersionStatus struct {
+	BuildConfigCreated bool `json:"buildConfigCreated"`
+	BuildConfigReady   bool `json:"buildConfigReady"`
+	ChartsReady        bool `json:"chartsReady"`
+}
+type SpecialResourceModuleStatus struct {
+	ImageStreamCreated bool                                          `json:"imageStreamCreated"`
+	Versions           map[string]SpecialResourceModuleVersionStatus `json:"versions,omitempty"`
+}
+
+// +kubebuilder:object:root=true
+// +kubebuilder:subresource:status
+// +kubebuilder:resource:path=specialresourcemodules,scope=Cluster
+// +kubebuilder:resource:path=specialresourcemodules,scope=Cluster,shortName=srm
+type SpecialResourceModule struct {
+	metav1.TypeMeta   `json:",inline"`
+	metav1.ObjectMeta `json:"metadata,omitempty"`
+	// +kubebuilder:validation:Required
+	Spec   SpecialResourceModuleSpec   `json:"spec,omitempty"`
+	Status SpecialResourceModuleStatus `json:"status,omitempty"`
+}
+
+// +kubebuilder:object:root=true
+// +kubebuilder:resource:path=specialresourcemodules,scope=Cluster
+// +kubebuilder:resource:path=specialresourcemodules,scope=Cluster,shortName=srm
+type SpecialResourceModuleList struct {
+	metav1.TypeMeta `json:",inline"`
+	metav1.ListMeta `json:"metadata,omitempty"`
+	Items           []SpecialResourceModule `json:"items"`
+}
+
 func init() {
 	SchemeBuilder.Register(&SpecialResource{}, &SpecialResourceList{})
+	SchemeBuilder.Register(&SpecialResourceModule{}, &SpecialResourceModuleList{})
 }
