@@ -53,6 +53,11 @@ import (
 	"github.com/openshift-psap/special-resource-operator/pkg/utils"
 )
 
+const (
+	SRgvk        = "SpecialResource"
+	SROwnedLabel = "specialresource.openshift.io/owned"
+)
+
 var (
 	log logr.Logger
 )
@@ -62,21 +67,20 @@ type SpecialResourceReconciler struct {
 	Log    logr.Logger
 	Scheme *runtime.Scheme
 
-	Metrics       metrics.Metrics
-	Cluster       cluster.Cluster
-	ClusterInfo   upgrade.ClusterInfo
-	Creator       resource.Creator
-	Filter        filter.Filter
-	Finalizer     finalizers.SpecialResourceFinalizer
-	Helmer        helmer.Helmer
-	Assets        assets.Assets
-	PollActions   poll.PollActions
-	StatusUpdater state.StatusUpdater
-	Storage       storage.Storage
-	KernelData    kernel.KernelData
-	ProxyAPI      proxy.ProxyAPI
-	KubeClient    clients.ClientsInterface
-
+	Metrics         metrics.Metrics
+	Cluster         cluster.Cluster
+	ClusterInfo     upgrade.ClusterInfo
+	Creator         resource.Creator
+	Filter          filter.Filter
+	Finalizer       finalizers.SpecialResourceFinalizer
+	Helmer          helmer.Helmer
+	Assets          assets.Assets
+	PollActions     poll.PollActions
+	StatusUpdater   state.StatusUpdater
+	Storage         storage.Storage
+	KernelData      kernel.KernelData
+	ProxyAPI        proxy.ProxyAPI
+	KubeClient      clients.ClientsInterface
 	specialresource srov1beta1.SpecialResource
 	parent          srov1beta1.SpecialResource
 	chart           chart.Chart

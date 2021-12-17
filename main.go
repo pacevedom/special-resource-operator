@@ -136,7 +136,10 @@ func main() {
 		setupLog.Error(err, "unable to create controller", "controller", "SpecialResource")
 		os.Exit(1)
 	}
-	srmReconciler := controllers.NewSpecialResourceModuleReconciler(ctrl.Log, mgr.GetScheme(), registry.Interface)
+	srmReconciler := controllers.NewSpecialResourceModuleReconciler(ctrl.Log,
+		mgr.GetScheme(),
+		registry.Interface,
+		filter.NewFilter(controllers.SRMgvk, controllers.SRMOwnedLabel))
 	if err = srmReconciler.SetupWithManager(mgr); err != nil {
 		setupLog.Error(err, "unable to create module controller", "controller", "SpecialResourceModule")
 		os.Exit(1)

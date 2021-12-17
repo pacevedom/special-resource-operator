@@ -32,6 +32,7 @@ import (
 	srov1beta1 "github.com/openshift-psap/special-resource-operator/api/v1beta1"
 	"github.com/openshift-psap/special-resource-operator/pkg/clients"
 	"github.com/openshift-psap/special-resource-operator/pkg/color"
+	"github.com/openshift-psap/special-resource-operator/pkg/filter"
 	"github.com/openshift-psap/special-resource-operator/pkg/registry"
 	buildv1 "github.com/openshift/api/build/v1"
 	"github.com/pkg/errors"
@@ -46,14 +47,14 @@ import (
 	ctrl "sigs.k8s.io/controller-runtime"
 	"sigs.k8s.io/controller-runtime/pkg/client"
 	"sigs.k8s.io/controller-runtime/pkg/controller"
-	"sigs.k8s.io/controller-runtime/pkg/event"
-	"sigs.k8s.io/controller-runtime/pkg/predicate"
 	"sigs.k8s.io/controller-runtime/pkg/reconcile"
 )
 
 const (
-	sroGVK = "SpecialResourceModule"
 	semver = `^(0|[1-9]\d*)\.(0|[1-9]\d*)\.(0|[1-9]\d*)(?:-((?:0|[1-9]\d*|\d*[a-zA-Z-][0-9a-zA-Z-]*)(?:\.(?:0|[1-9]\d*|\d*[a-zA-Z-][0-9a-zA-Z-]*))*))?(?:\+([0-9a-zA-Z-]+(?:\.[0-9a-zA-Z-]+)*))?$`
+
+	SRMgvk        = "SpecialResourceModule"
+	SRMOwnedLabel = "specialresourcemodule.openshift.io/owned"
 )
 
 var (
@@ -230,63 +231,6 @@ func getOCPVersions(watchList []srov1beta1.SpecialResourceModuleWatch, reg regis
 	return versionMap, nil
 }
 
-func isSpecialResourceModule(obj client.Object) bool {
-	kind := obj.GetObjectKind().GroupVersionKind().Kind
-	if kind == sroGVK {
-		return true
-	}
-	t := reflect.TypeOf(obj).String()
-	if strings.Contains(t, sroGVK) {
-		return true
-
-	}
-	selfLink := obj.GetSelfLink()
-	if strings.Contains(selfLink, "/apis/sro.openshift.io/v") {
-		return true
-	}
-	if kind == "" {
-		objstr := fmt.Sprintf("%+v", obj)
-		if strings.Contains(objstr, "sro.openshift.io/v") {
-			return true
-		}
-	}
-	return false
-}
-
-func predicates(r *SpecialResourceModuleReconciler) predicate.Predicate {
-	//TODO check the resource is in r.watchedResources, apart from the regular ones: buildconfig, imagestream, build
-	return predicate.Funcs{
-		CreateFunc: func(e event.CreateEvent) bool {
-			obj := e.Object
-			if isSpecialResourceModule(obj) {
-				return true
-			}
-			return false
-		},
-		UpdateFunc: func(e event.UpdateEvent) bool {
-			obj := e.ObjectNew
-			if isSpecialResourceModule(obj) {
-				return true
-			}
-			return false
-		},
-		DeleteFunc: func(e event.DeleteEvent) bool {
-			obj := e.Object
-			if isSpecialResourceModule(obj) {
-				return true
-			}
-			return false
-		},
-		GenericFunc: func(e event.GenericEvent) bool {
-			obj := e.Object
-			if isSpecialResourceModule(obj) {
-				return true
-			}
-			return false
-		},
-	}
-}
-
 func FindSRM(a []srov1beta1.SpecialResourceModule, x string) (int, bool) {
 	for i, n := range a {
 		if x == n.GetName() {
@@ -302,14 +246,16 @@ type SpecialResourceModuleReconciler struct {
 	Scheme           *runtime.Scheme
 	watchedResources map[string]int
 	reg              registry.Registry
+	filter           filter.Filter
 }
 
-func NewSpecialResourceModuleReconciler(log logr.Logger, scheme *runtime.Scheme, reg registry.Registry) SpecialResourceModuleReconciler {
+func NewSpecialResourceModuleReconciler(log logr.Logger, scheme *runtime.Scheme, reg registry.Registry, f filter.Filter) SpecialResourceModuleReconciler {
 	return SpecialResourceModuleReconciler{
 		Log:              log,
 		Scheme:           scheme,
 		watchedResources: make(map[string]int),
 		reg:              reg,
+		filter:           f,
 	}
 }
 
@@ -396,7 +342,7 @@ func (r *SpecialResourceModuleReconciler) SetupWithManager(mgr ctrl.Manager) err
 			WithOptions(controller.Options{
 				MaxConcurrentReconciles: 1,
 			}).
-			WithEventFilter(predicates(r)).
+			WithEventFilter(r.filter.GetPredicates()).
 			Complete(r)
 	}
 	return errors.New("SpecialResourceModules only work in OCP")
