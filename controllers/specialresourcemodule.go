@@ -20,6 +20,7 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"github.com/openshift-psap/special-resource-operator/pkg/watcher"
 	"io"
 	"io/ioutil"
 	"net/http"
@@ -242,28 +243,19 @@ func FindSRM(a []srov1beta1.SpecialResourceModule, x string) (int, bool) {
 
 // SpecialResourceModuleReconciler reconciles a SpecialResource object
 type SpecialResourceModuleReconciler struct {
-	Log              logr.Logger
-	Scheme           *runtime.Scheme
-	watchedResources map[string]int
-	reg              registry.Registry
-	filter           filter.Filter
+	Log     logr.Logger
+	Scheme  *runtime.Scheme
+	reg     registry.Registry
+	filter  filter.Filter
+	watcher watcher.Watcher
 }
 
 func NewSpecialResourceModuleReconciler(log logr.Logger, scheme *runtime.Scheme, reg registry.Registry, f filter.Filter) SpecialResourceModuleReconciler {
 	return SpecialResourceModuleReconciler{
-		Log:              log,
-		Scheme:           scheme,
-		watchedResources: make(map[string]int),
-		reg:              reg,
-		filter:           f,
-	}
-}
-
-func (r *SpecialResourceModuleReconciler) addToWatch(resource string) {
-	if _, ok := r.watchedResources[resource]; !ok {
-		r.watchedResources[resource] = 1
-	} else {
-		r.watchedResources[resource]++
+		Log:    log,
+		Scheme: scheme,
+		reg:    reg,
+		filter: f,
 	}
 }
 
@@ -298,9 +290,10 @@ func (r *SpecialResourceModuleReconciler) Reconcile(ctx context.Context, req ctr
 		resource.Status.ImageStreamCreated = true
 	}
 
-	/*for _, watchElement := range resource.Spec.Watch {
-		r.addToWatch(watchElement)
-	}*/
+	if err := r.watcher.ReconcileWatches(resource); err != nil {
+		logModule.Error(err, "failed to update watched resources")
+		return reconcile.Result{}, err
+	}
 
 	//TODO cache images, wont change dynamically.
 	clusterVersions, err := getOCPVersions(resource.Spec.Watch, r.reg)
@@ -335,7 +328,7 @@ func (r *SpecialResourceModuleReconciler) SetupWithManager(mgr ctrl.Manager) err
 	}
 
 	if platform == "OCP" {
-		return ctrl.NewControllerManagedBy(mgr).
+		c, err := ctrl.NewControllerManagedBy(mgr).
 			For(&srov1beta1.SpecialResourceModule{}).
 			Owns(&imagev1.ImageStream{}).
 			Owns(&buildv1.BuildConfig{}).
@@ -343,7 +336,10 @@ func (r *SpecialResourceModuleReconciler) SetupWithManager(mgr ctrl.Manager) err
 				MaxConcurrentReconciles: 1,
 			}).
 			WithEventFilter(r.filter.GetPredicates()).
-			Complete(r)
+			Build(r)
+
+		r.watcher = watcher.New(c)
+		return err
 	}
 	return errors.New("SpecialResourceModules only work in OCP")
 }
