@@ -40,7 +40,6 @@ import (
 
 	imagev1 "github.com/openshift/api/image/v1"
 
-	"github.com/oliveagle/jsonpath"
 	"k8s.io/apimachinery/pkg/apis/meta/v1/unstructured"
 	"k8s.io/apimachinery/pkg/runtime"
 	"k8s.io/client-go/rest"
@@ -83,32 +82,6 @@ func getResource(kind, apiVersion, namespace, name string) (unstructured.Unstruc
 	key := client.ObjectKeyFromObject(&obj)
 	err := clients.Interface.Get(context.Background(), key, &obj)
 	return obj, err
-}
-
-func getJSONPath(path string, obj unstructured.Unstructured) ([]string, error) {
-	expression, err := jsonpath.Compile(path)
-	if err != nil {
-		return nil, err
-	}
-	match, err := expression.Lookup(obj.Object)
-	if err != nil {
-		return nil, err
-	}
-	switch reflect.TypeOf(match).Kind() {
-	case reflect.Slice:
-		if res, ok := match.([]interface{}); !ok {
-			return nil, errors.New("Error converting result to string")
-		} else {
-			strSlice := make([]string, 0)
-			for _, element := range res {
-				strSlice = append(strSlice, element.(string))
-			}
-			return strSlice, nil
-		}
-	case reflect.String:
-		return []string{match.(string)}, nil
-	}
-	return nil, errors.New("Unsupported result")
 }
 
 func getVersionInfoFromImage(entry string, reg registry.Registry) (string, OCPVersionInfo, error) {
@@ -205,7 +178,7 @@ func getOCPVersions(watchList []srov1beta1.SpecialResourceModuleWatch, reg regis
 		if err != nil {
 			return nil, err
 		}
-		result, err := getJSONPath(resource.Path, obj)
+		result, err := watcher.GetJSONPath(resource.Path, obj)
 		if err != nil {
 			return nil, err
 		}

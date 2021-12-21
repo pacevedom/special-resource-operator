@@ -4,12 +4,13 @@ package watcher
 import (
 	"errors"
 	"fmt"
-	"strings"
-
-	srov1beta1 "github.com/openshift-psap/special-resource-operator/api/v1beta1"
-	"github.com/openshift-psap/special-resource-operator/pkg/color"
+	"reflect"
+	"sort"
 
 	"github.com/go-logr/logr"
+	"github.com/oliveagle/jsonpath"
+	srov1beta1 "github.com/openshift-psap/special-resource-operator/api/v1beta1"
+	"github.com/openshift-psap/special-resource-operator/pkg/color"
 	"k8s.io/apimachinery/pkg/apis/meta/v1/unstructured"
 	"k8s.io/apimachinery/pkg/runtime/schema"
 	"k8s.io/apimachinery/pkg/types"
@@ -22,21 +23,21 @@ import (
 )
 
 type WatchedResource struct {
-	ApiVersion string `name:"apiVersion"`
-	Kind       string `name:"kind"`
-	Name       string `name:"name"`
-	Namespace  string `name:"namespace"`
+	ApiVersion string
+	Kind       string
+	Name       string
+	Namespace  string
 }
 
 type WatchedResourceWithPath struct {
 	WatchedResource
-	Path string `name:"path"`
+	Path string
 }
 
 // pathData contains last known value of property and a list of Namespaced Names (SpecialResourceModules)
 // that should be reconciled if that `Data` changes
 type pathData struct {
-	Data            string `name:"data"`
+	Data            []string
 	NamespacedNames []types.NamespacedName
 }
 
@@ -263,28 +264,22 @@ func (w *watcher) mapper(o client.Object) []reconcile.Request {
 
 	if paths, ok := w.watchedResToPaths[wrObj]; ok {
 		for _, path := range paths {
-			// TODO: Substitute with proper jsonpath?
 			// Get current value of property at path
-			val, found, err := unstructured.NestedString(unstr.Object, strings.Split(path, ".")...)
+			vals, err := GetJSONPath(path, *unstr)
 			if err != nil {
-				w.log.Error(err, "failed to get nested string", "resource", wrObj)
-				continue
+				w.log.Error(err, "failed to obtain a values", "path", path)
 			}
-			if !found {
-				w.log.Info("could not obtain property at specified path", "path", path, "resource", wrObj)
-				continue
-			}
-			w.log.Info("obtained value @ path", "path", path, "value", val)
+			w.log.Info("obtained values @ path", "path", path, "values", vals)
 
 			// Compare obtained value against stored one
 			wrd := WatchedResourceWithPath{WatchedResource: wrObj, Path: path}
 			if pathData, ok := w.watchedResToData[wrd]; ok {
-				if pathData.Data != val {
+				if !areEqual(pathData.Data, vals) {
 					for _, nn := range pathData.NamespacedNames {
 						crsToTrigger = append(crsToTrigger, reconcile.Request{NamespacedName: nn})
 					}
 
-					pathData.Data = val
+					pathData.Data = vals
 					w.watchedResToData[wrd] = pathData
 				} else {
 					w.log.Info("data did not change - no retrigger")
@@ -298,4 +293,47 @@ func (w *watcher) mapper(o client.Object) []reconcile.Request {
 	}
 
 	return crsToTrigger
+}
+
+func GetJSONPath(path string, obj unstructured.Unstructured) ([]string, error) {
+	expression, err := jsonpath.Compile(path)
+	if err != nil {
+		return nil, err
+	}
+	match, err := expression.Lookup(obj.Object)
+	if err != nil {
+		return nil, err
+	}
+	switch reflect.TypeOf(match).Kind() {
+	case reflect.Slice:
+		if res, ok := match.([]interface{}); !ok {
+			return nil, errors.New("Error converting result to string")
+		} else {
+			strSlice := make([]string, 0)
+			for _, element := range res {
+				strSlice = append(strSlice, element.(string))
+			}
+			return strSlice, nil
+		}
+	case reflect.String:
+		return []string{match.(string)}, nil
+	}
+	return nil, errors.New("Unsupported result")
+}
+
+func areEqual(s1, s2 []string) bool {
+	if len(s1) != len(s2) {
+		return false
+	}
+
+	sort.Strings(s1)
+	sort.Strings(s2)
+
+	for idx := range s1 {
+		if s1[idx] != s2[idx] {
+			return false
+		}
+	}
+
+	return true
 }

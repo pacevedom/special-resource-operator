@@ -44,14 +44,18 @@ var _ = Describe("Watcher", func() {
 		Kind:       "ClusterVersion",
 		Name:       "version",
 		Namespace:  "",
-		Path:       "status.desired.image",
+		Path:       "$.status.history[*].image",
 	}
-	clusterVersionImage := "some-registry.dummy/cluster/image:sha1234567890"
 	clusterVersion := &unstructured.Unstructured{}
 	clusterVersion.SetAPIVersion(clusterVersionWatch.ApiVersion)
 	clusterVersion.SetKind(clusterVersionWatch.Kind)
 	clusterVersion.SetName(clusterVersionWatch.Name)
-	err := unstructured.SetNestedField(clusterVersion.Object, clusterVersionImage, strings.Split(clusterVersionWatch.Path, ".")...)
+
+	history := []interface{}{
+		map[string]interface{}{"image": "some-registry.dummy/cluster/image:sha456"},
+		map[string]interface{}{"image": "some-registry.dummy/cluster/image:sha123"},
+	}
+	err := unstructured.SetNestedField(clusterVersion.Object, history, "status", "history")
 	Expect(err).ToNot(HaveOccurred())
 
 	dummyWatch := srov1beta1.SpecialResourceModuleWatch{
@@ -59,14 +63,16 @@ var _ = Describe("Watcher", func() {
 		Kind:       "SpokeVersion",
 		Name:       "version",
 		Namespace:  "",
-		Path:       "status.image",
+		Path:       "$.status.image",
 	}
 	dummyImage := "another-registry.dummy/cluster/image:sha0987654321"
 	dummy := &unstructured.Unstructured{}
 	dummy.SetAPIVersion(dummyWatch.ApiVersion)
 	dummy.SetKind(dummyWatch.Kind)
 	dummy.SetName(dummyWatch.Name)
-	err = unstructured.SetNestedField(dummy.Object, dummyImage, strings.Split(dummyWatch.Path, ".")...)
+	err = unstructured.SetNestedField(dummy.Object, dummyImage,
+		strings.Split(strings.TrimPrefix(dummyWatch.Path, "$."), ".")...)
+
 	Expect(err).ToNot(HaveOccurred())
 
 	srm1 := srov1beta1.SpecialResourceModule{
@@ -134,9 +140,27 @@ var _ = Describe("Watcher", func() {
 			Expect(requests).ToNot(BeEmpty())
 			Expect(requests).To(ContainElements(reconcile.Request{NamespacedName: types.NamespacedName{Namespace: srm2.Namespace, Name: srm2.Name}}))
 
-			By("simulating update of watched ClusterVersion with new data")
-			err = unstructured.SetNestedField(clusterVersion.Object, "not-important", strings.Split(clusterVersionWatch.Path, ".")...)
+			By("simulating update of watched ClusterVersion with the same data but in different order")
+			history := []interface{}{
+				map[string]interface{}{"image": "some-registry.dummy/cluster/image:sha123"},
+				map[string]interface{}{"image": "some-registry.dummy/cluster/image:sha456"},
+			}
+
+			err = unstructured.SetNestedField(clusterVersion.Object, history, "status", "history")
 			Expect(err).ToNot(HaveOccurred())
+
+			requests = w.(*watcher).mapper(clusterVersion)
+			Expect(requests).To(BeEmpty())
+
+			By("simulating update of watched ClusterVersion with new data")
+			history = []interface{}{
+				map[string]interface{}{"image": "some-registry.dummy/cluster/image:sha123"},
+				map[string]interface{}{"image": "some-registry.dummy/cluster/image:sha789"},
+			}
+
+			err = unstructured.SetNestedField(clusterVersion.Object, history, "status", "history")
+			Expect(err).ToNot(HaveOccurred())
+
 			requests = w.(*watcher).mapper(clusterVersion)
 			Expect(requests).ToNot(BeEmpty())
 			Expect(requests).To(ContainElements(reconcile.Request{NamespacedName: types.NamespacedName{Namespace: srm1.Namespace, Name: srm1.Name}}))
@@ -148,8 +172,12 @@ var _ = Describe("Watcher", func() {
 			Expect(err).ToNot(HaveOccurred())
 
 			By("simulating update of watched ClusterVersion, but the observed data changed again")
-			err = unstructured.SetNestedField(clusterVersion.Object, "also-not-important", strings.Split(clusterVersionWatch.Path, ".")...)
+			history = []interface{}{
+				map[string]interface{}{"image": "some-registry.dummy/cluster/image:sha321"},
+			}
+			err = unstructured.SetNestedField(clusterVersion.Object, history, "status", "history")
 			Expect(err).ToNot(HaveOccurred())
+
 			requests = w.(*watcher).mapper(clusterVersion)
 			Expect(requests).ToNot(BeEmpty())
 			Expect(requests).To(ContainElements(reconcile.Request{NamespacedName: types.NamespacedName{Namespace: srm1.Namespace, Name: srm1.Name}}))
