@@ -20,7 +20,6 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
-	"github.com/openshift-psap/special-resource-operator/pkg/watcher"
 	"io"
 	"io/ioutil"
 	"net/http"
@@ -34,6 +33,7 @@ import (
 	"github.com/openshift-psap/special-resource-operator/pkg/color"
 	"github.com/openshift-psap/special-resource-operator/pkg/filter"
 	"github.com/openshift-psap/special-resource-operator/pkg/registry"
+	"github.com/openshift-psap/special-resource-operator/pkg/watcher"
 	buildv1 "github.com/openshift/api/build/v1"
 	"github.com/pkg/errors"
 
