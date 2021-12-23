@@ -25,17 +25,22 @@ import (
 	"net/http"
 	"net/url"
 	"regexp"
+	"sort"
 	"strings"
 
 	"github.com/go-logr/logr"
 	srov1beta1 "github.com/openshift-psap/special-resource-operator/api/v1beta1"
+	"github.com/openshift-psap/special-resource-operator/pkg/assets"
 	"github.com/openshift-psap/special-resource-operator/pkg/clients"
 	"github.com/openshift-psap/special-resource-operator/pkg/color"
 	"github.com/openshift-psap/special-resource-operator/pkg/filter"
+	"github.com/openshift-psap/special-resource-operator/pkg/helmer"
 	"github.com/openshift-psap/special-resource-operator/pkg/registry"
 	"github.com/openshift-psap/special-resource-operator/pkg/watcher"
 	buildv1 "github.com/openshift/api/build/v1"
 	"github.com/pkg/errors"
+	"helm.sh/helm/v3/pkg/chart"
+	"helm.sh/helm/v3/pkg/chartutil"
 
 	imagev1 "github.com/openshift/api/image/v1"
 
@@ -57,19 +62,27 @@ const (
 )
 
 var (
-	logModule    logr.Logger
 	versionRegex = regexp.MustCompile(semver)
 )
 
-func createImageStream(name, namespace string) error {
-	//TODO
-	return nil
+type Metadata struct {
+	OperatingSystem       string                           `json:"operatingSystem"`
+	KernelFullVersion     string                           `json:"kernelFullVersion"`
+	RTKernelFullVersion   string                           `json:"rtKernelFullVersion"`
+	DriverToolkitImage    string                           `json:"driverToolkitImage"`
+	ClusterVersion        string                           `json:"clusterVersion"`
+	OSImageURL            string                           `json:"osImageURL"`
+	GroupName             ResourceGroupName                `json:"groupName"`
+	SpecialResourceModule srov1beta1.SpecialResourceModule `json:"specialResourceModule"`
 }
 
 type OCPVersionInfo struct {
 	KernelVersion   string
 	RTKernelVersion string
 	DTKImage        string
+	OSVersion       string
+	OSImage         string
+	ClusterVersion  string
 }
 
 func getResource(kind, apiVersion, namespace, name string) (unstructured.Unstructured, error) {
@@ -83,27 +96,30 @@ func getResource(kind, apiVersion, namespace, name string) (unstructured.Unstruc
 	return obj, err
 }
 
-func getVersionInfoFromImage(entry string, reg registry.Registry) (string, OCPVersionInfo, error) {
+func getVersionInfoFromImage(entry string, reg registry.Registry) (OCPVersionInfo, error) {
 	manifestsLastLayer, err := reg.LastLayer(entry)
 	if err != nil {
-		return "", OCPVersionInfo{}, err
+		return OCPVersionInfo{}, err
 	}
 	version, dtkURL, err := reg.ReleaseManifests(manifestsLastLayer)
 	if err != nil {
-		return "", OCPVersionInfo{}, err
+		return OCPVersionInfo{}, err
 	}
 	dtkLastLayer, err := reg.LastLayer(dtkURL)
 	if err != nil {
-		return "", OCPVersionInfo{}, err
+		return OCPVersionInfo{}, err
 	}
 	dtkEntry, err := reg.ExtractToolkitRelease(dtkLastLayer)
 	if err != nil {
-		return "", OCPVersionInfo{}, err
+		return OCPVersionInfo{}, err
 	}
-	return version, OCPVersionInfo{
+	return OCPVersionInfo{
 		KernelVersion:   dtkEntry.KernelFullVersion,
 		RTKernelVersion: dtkEntry.RTKernelFullVersion,
 		DTKImage:        dtkURL,
+		OSVersion:       dtkEntry.OSVersion,
+		OSImage:         entry,
+		ClusterVersion:  version,
 	}, nil
 }
 
@@ -194,14 +210,102 @@ func getOCPVersions(watchList []srov1beta1.SpecialResourceModuleWatch, reg regis
 			} else {
 				return nil, fmt.Errorf("Format error. %s is not a valid image/version", element)
 			}
-			version, info, err := getVersionInfoFromImage(image, reg)
+			info, err := getVersionInfoFromImage(image, reg)
 			if err != nil {
 				return nil, err
 			}
-			versionMap[version] = info
+			versionMap[info.ClusterVersion] = info
 		}
 	}
 	return versionMap, nil
+}
+
+func createNamespace(name string) error {
+	ns := unstructured.Unstructured{}
+	ns.SetKind("Namespace")
+	ns.SetAPIVersion("v1")
+	ns.SetName(name)
+	return clients.Interface.Create(context.Background(), &ns)
+}
+
+func getMetadata(srm srov1beta1.SpecialResourceModule, info OCPVersionInfo) Metadata {
+	return Metadata{
+		OperatingSystem:     info.OSVersion,
+		KernelFullVersion:   info.KernelVersion,
+		RTKernelFullVersion: info.RTKernelVersion,
+		DriverToolkitImage:  info.DTKImage,
+		ClusterVersion:      info.ClusterVersion,
+		OSImageURL:          info.OSImage,
+		GroupName: ResourceGroupName{
+			DriverBuild:            "driver-build",
+			DriverContainer:        "driver-container",
+			RuntimeEnablement:      "runtime-enablement",
+			DevicePlugin:           "device-plugin",
+			DeviceMonitoring:       "device-monitoring",
+			DeviceDashboard:        "device-dashboard",
+			DeviceFeatureDiscovery: "device-feature-discovery",
+			CSIDriver:              "csi-driver",
+		},
+		SpecialResourceModule: srm,
+	}
+}
+
+func reconcileChart(srm *srov1beta1.SpecialResourceModule, metadata Metadata, reconciledInput []string) ([]string, error) {
+	reconciledInputMap := make(map[string]bool)
+	for _, element := range reconciledInput {
+		reconciledInputMap[element] = true
+	}
+	result := make([]string, 0)
+	c, err := helmer.Load(srm.Spec.Chart)
+	if err != nil {
+		return result, err
+	}
+
+	nostate := *c
+	nostate.Templates = []*chart.File{}
+	stateYAMLS := []*chart.File{}
+	for _, template := range c.Templates {
+		if assets.ValidStateName(template.Name) {
+			if _, ok := reconciledInputMap[template.Name]; !ok {
+				stateYAMLS = append(stateYAMLS, template)
+			} else {
+				result = append(result, template.Name)
+			}
+		} else {
+			nostate.Templates = append(nostate.Templates, template)
+		}
+	}
+
+	sort.Slice(stateYAMLS, func(i, j int) bool {
+		return stateYAMLS[i].Name < stateYAMLS[j].Name
+	})
+
+	for _, stateYAML := range stateYAMLS {
+		step := nostate
+		step.Templates = append(nostate.Templates, stateYAML)
+
+		rinfo, err := runtime.DefaultUnstructuredConverter.ToUnstructured(&metadata)
+		if err != nil {
+			return result, err
+		}
+		step.Values, err = chartutil.CoalesceValues(&step, rinfo)
+		if err != nil {
+			return result, err
+		}
+		err = helmer.Run(step, step.Values,
+			srm,
+			srm.Name,
+			srm.Spec.Namespace,
+			nil,
+			metadata.KernelFullVersion,
+			metadata.OperatingSystem,
+			false)
+		if err != nil {
+			return result, err
+		}
+		result = append(result, stateYAML.Name)
+	}
+	return nil, nil
 }
 
 func FindSRM(a []srov1beta1.SpecialResourceModule, x string) (int, bool) {
@@ -231,9 +335,13 @@ func NewSpecialResourceModuleReconciler(log logr.Logger, scheme *runtime.Scheme,
 	}
 }
 
+func updateSpecialResourceModuleStatus(resource srov1beta1.SpecialResourceModule) error {
+	return clients.Interface.StatusUpdate(context.Background(), &resource)
+}
+
 // Reconcile Reconiliation entry point
 func (r *SpecialResourceModuleReconciler) Reconcile(ctx context.Context, req ctrl.Request) (ctrl.Result, error) {
-	logModule = r.Log.WithName(color.Print("reconcile: "+req.Name, color.Purple))
+	logModule := r.Log.WithName(color.Print("reconcile: "+req.Name, color.Purple))
 	logModule.Info("Reconciling")
 
 	srm := &srov1beta1.SpecialResourceModuleList{}
@@ -246,25 +354,21 @@ func (r *SpecialResourceModuleReconciler) Reconcile(ctx context.Context, req ctr
 
 	var request int
 	var found bool
-	//TODO check for deletion timestamp.
 	if request, found = FindSRM(srm.Items, req.Name); !found {
 		logModule.Info("Not found")
 		return reconcile.Result{}, nil
 	}
 	resource := srm.Items[request]
-	logModule.Info("Resource", "resource", resource)
 
-	if !resource.Status.ImageStreamCreated {
-		logModule.Info("ImageStream not found. Creating")
-		if err := createImageStream(req.Name, resource.Spec.Namespace); err != nil {
-			return reconcile.Result{}, err
-		}
-		resource.Status.ImageStreamCreated = true
-	}
+	//TODO check for deletion timestamp.
 
 	if err := r.watcher.ReconcileWatches(resource); err != nil {
 		logModule.Error(err, "failed to update watched resources")
 		return reconcile.Result{}, err
+	}
+
+	if err := createNamespace(resource.Spec.Namespace); err != nil {
+		//TODO not an error if it already exists. Do it more efficiently.
 	}
 
 	//TODO cache images, wont change dynamically.
@@ -273,21 +377,48 @@ func (r *SpecialResourceModuleReconciler) Reconcile(ctx context.Context, req ctr
 		return reconcile.Result{}, err
 	}
 
-	logModule.Info("Checking versions in status")
+	if resource.Status.Versions == nil {
+		resource.Status.Versions = make(map[string]srov1beta1.SpecialResourceModuleVersionStatus)
+	}
+
+	updateList := make([]OCPVersionInfo, 0)
+	deleteList := make([]OCPVersionInfo, 0)
 	for resourceVersion, _ := range resource.Status.Versions {
-		if _, ok := clusterVersions[resourceVersion]; !ok {
-			//TODO not found. Need to remove everything
+		if data, ok := clusterVersions[resourceVersion]; ok {
+			updateList = append(updateList, data)
 		} else {
-			//TODO Found, need to check for reconcile stage.
+			deleteList = append(deleteList, data)
 		}
 	}
-	logModule.Info("Checking versions from the cluster")
-	for clusterVersion, _ := range clusterVersions {
-		if _, ok := resource.Status.Versions[clusterVersion]; !ok {
-			//TODO not found, this version is new. reconcile.
-		}
+	for _, clusterInfo := range clusterVersions {
+		updateList = append(updateList, clusterInfo)
 	}
-	//TODO update resource status.
+
+	for _, element := range deleteList {
+		logModule.Info("Removing version", "version", element.ClusterVersion)
+		//TODO
+	}
+	for _, element := range updateList {
+		logModule.Info("Reconciling version", "version", element.ClusterVersion)
+		metadata := getMetadata(resource, element)
+		var inputList []string
+		if data, ok := resource.Status.Versions[element.ClusterVersion]; ok {
+			inputList = data.ReconciledTemplates
+		}
+		reconciledList, err := reconcileChart(&resource, metadata, inputList)
+		resource.Status.Versions[element.ClusterVersion] = srov1beta1.SpecialResourceModuleVersionStatus{
+			ReconciledTemplates: reconciledList,
+			Complete:            len(reconciledList) == 0,
+		}
+		if e := updateSpecialResourceModuleStatus(resource); e != nil {
+			return reconcile.Result{}, e
+		}
+		if err != nil {
+			return reconcile.Result{}, err
+		}
+
+	}
+
 	logModule.Info("Done")
 	return reconcile.Result{}, nil
 }

@@ -1,0 +1,29 @@
+apiVersion: sro.openshift.io/v1beta1
+kind: SpecialResourceModule
+metadata:
+  name: acm-kmod
+spec:
+  namespace: acm-kmod
+  chart:
+    name: acm-kmod
+    version: 0.0.1
+    repository:
+      name: example
+      url: file:///charts/example
+  set:
+    kind: Values
+    apiVersion: sro.openshift.io/v1beta1
+    kmodNames: ["simple-kmod", "simple-procfs-kmod"]
+    buildArgs:
+    - name: "KMODVER"
+      value: "SRO"
+  driverContainer:
+    source:
+      git:
+        ref: "master"
+        uri: "https://github.com/openshift-psap/kvc-simple-kmod.git"
+  watch:
+    - path: "$.status.history[*].image"
+      apiVersion: config.openshift.io/v1
+      kind: ClusterVersion
+      name: version

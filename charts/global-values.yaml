@@ -13,6 +13,17 @@ specialresource:
           ref: "ref"
           uri: "uri"
 
+specialResourceModule:
+  metadata:
+    name: "name"
+  spec:
+    namespace: "namespace"
+    driverContainer:
+      source:
+        git:
+          ref: "ref"
+          uri: "uri"
+
 groupName:
   driverContainer: "driver-container"
   driverBuild: "driver-build"

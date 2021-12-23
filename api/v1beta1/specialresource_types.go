@@ -202,14 +202,13 @@ type SpecialResourceModuleSpec struct {
 	// +kubebuilder:validation:Required
 	Watch []SpecialResourceModuleWatch `json:"watch"`
 }
+
 type SpecialResourceModuleVersionStatus struct {
-	BuildConfigCreated bool `json:"buildConfigCreated"`
-	BuildConfigReady   bool `json:"buildConfigReady"`
-	ChartsReady        bool `json:"chartsReady"`
+	ReconciledTemplates []string `json:"reconciledTemplates,omitempty"`
+	Complete            bool     `json:"complete"`
 }
 type SpecialResourceModuleStatus struct {
-	ImageStreamCreated bool                                          `json:"imageStreamCreated"`
-	Versions           map[string]SpecialResourceModuleVersionStatus `json:"versions,omitempty"`
+	Versions map[string]SpecialResourceModuleVersionStatus `json:"versions,omitempty"`
 }
 
 // +kubebuilder:object:root=true

@@ -1,0 +1,8 @@
+# test file
+apiVersion: image.openshift.io/v1
+kind: ImageStream
+metadata:
+  labels:
+    app: {{.Values.specialResourceModule.metadata.name}}-{{.Values.kernelFullVersion}}
+  name: {{.Values.specialResourceModule.metadata.name}}-{{.Values.kernelFullVersion}}
+spec: {}

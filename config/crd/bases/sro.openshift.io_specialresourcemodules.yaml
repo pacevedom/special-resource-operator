@@ -196,25 +196,19 @@ spec:
             type: object
           status:
             properties:
-              imageStreamCreated:
-                type: boolean
               versions:
                 additionalProperties:
                   properties:
-                    buildConfigCreated:
+                    complete:
                       type: boolean
-                    buildConfigReady:
-                      type: boolean
-                    chartsReady:
-                      type: boolean
+                    reconciledTemplates:
+                      items:
+                        type: string
+                      type: array
                   required:
-                  - buildConfigCreated
-                  - buildConfigReady
-                  - chartsReady
+                  - complete
                   type: object
                 type: object
-            required:
-            - imageStreamCreated
             type: object
         type: object
     served: true
