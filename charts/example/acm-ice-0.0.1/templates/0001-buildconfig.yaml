@@ -1,0 +1,174 @@
+apiVersion: image.openshift.io/v1
+kind: ImageStream
+metadata:
+  labels:
+    app: {{.Values.specialResourceModule.metadata.name}}-{{.Values.groupName.driverContainer}}
+  name: {{.Values.specialResourceModule.metadata.name}}-{{.Values.groupName.driverContainer}}
+spec: {}
+---
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: {{.Values.specialResourceModule.metadata.name}}-scripts
+data:
+  load.sh: |
+    #!/bin/bash
+    set -eu
+
+    # unload in-tree driver
+    rmmod ice || true
+
+    # load out-of-tree driver
+    insmod /ice-driver/ice.ko
+
+    echo "Loaded out-of-tree ICE"
+    lsmod | grep ice || true
+
+    sleep infinity
+  unload.sh: |
+    #!/bin/bash
+    set -eu
+
+    # unload the out-of-tree driver
+    rmmod ice
+
+    # load the in-tree driver
+    modprobe ice
+
+    echo "Unloaded out-of-tree and reloaded in-tree ICE driver"
+    lsmod | grep ice || true
+---
+apiVersion: build.openshift.io/v1
+kind: BuildConfig
+metadata:
+  labels:
+    app: {{.Values.specialResourceModule.metadata.name}}-{{.Values.groupName.driverBuild}}
+  name: {{.Values.specialResourceModule.metadata.name}}-{{.Values.groupName.driverBuild}}
+  annotations:
+    specialresource.openshift.io/wait: "true"
+spec:
+  nodeSelector:
+    node-role.kubernetes.io/worker: ""
+  runPolicy: "Serial"
+  triggers:
+    - type: "ConfigChange"
+    - type: "ImageChange"
+  source:
+    configMaps:
+    - configMap:
+        name: {{.Values.specialResourceModule.metadata.name}}-scripts
+      destinationDir: "./scripts/"
+    dockerfile: |
+      ARG IMAGE
+      ARG BUILD_IMAGE
+
+      FROM ${BUILD_IMAGE} AS builder
+      WORKDIR /build/
+      
+      ARG DRIVER_VER
+      
+      # TODO: Offline build (without wget)
+
+      RUN wget https://netix.dl.sourceforge.net/project/e1000/ice%20stable/$DRIVER_VER/ice-$DRIVER_VER.tar.gz
+      RUN tar zxf ice-$DRIVER_VER.tar.gz
+      WORKDIR ice-$DRIVER_VER/src
+      
+      ARG KERNEL_VERSION
+      RUN BUILD_KERNEL=$KERNEL_VERSION KSRC=/lib/modules/$KERNEL_VERSION/build/ make
+      
+      # TODO: Sign
+      
+      FROM ${IMAGE}
+      
+      ARG DRIVER_VER
+      ARG KERNEL_VERSION
+      
+      RUN microdnf install --disablerepo=* --enablerepo=ubi-8-baseos -y kmod
+      
+      COPY --from=builder /build/ice-$DRIVER_VER/src/ice.ko /ice-driver/
+      COPY scripts/load.sh scripts/unload.sh /scripts/
+      RUN chmod +x /scripts/load.sh && chmod +x /scripts/unload.sh
+  strategy:
+    dockerStrategy:
+      buildArgs:
+        - name: BUILD_IMAGE
+          value: {{ .Values.driverToolkitImage  }}
+        - name: KERNEL_VERSION
+          value: {{ .Values.kernelFullVersion }}
+        - name: IMAGE
+          value: registry.access.redhat.com/ubi8/ubi-minimal
+        {{- range $arg := .Values.buildArgs }}
+        - name: {{ $arg.name }}
+          value: {{ $arg.value }}
+        {{- end }}
+  output:
+    to:
+      kind: ImageStreamTag
+      name: {{.Values.specialResourceModule.metadata.name}}-{{.Values.groupName.driverContainer}}:v{{.Values.kernelFullVersion}}
+---
+apiVersion: build.openshift.io/v1
+kind: BuildConfig
+metadata:
+  labels:
+    app: {{.Values.specialResourceModule.metadata.name}}-{{.Values.groupName.driverBuild}}-rt
+  name: {{.Values.specialResourceModule.metadata.name}}-{{.Values.groupName.driverBuild}}-rt
+  annotations:
+    specialresource.openshift.io/wait: "true"
+spec:
+  nodeSelector:
+    node-role.kubernetes.io/worker: ""
+  runPolicy: "Serial"
+  triggers:
+    - type: "ConfigChange"
+    - type: "ImageChange"
+  source:
+    configMaps:
+    - configMap:
+        name: {{.Values.specialResourceModule.metadata.name}}-scripts
+      destinationDir: "./scripts/"
+    dockerfile: |
+      ARG IMAGE
+      ARG BUILD_IMAGE
+
+      FROM ${BUILD_IMAGE} AS builder
+      WORKDIR /build/
+      
+      ARG DRIVER_VER
+      
+      # TODO: Offline build (without wget)
+
+      RUN wget https://netix.dl.sourceforge.net/project/e1000/ice%20stable/$DRIVER_VER/ice-$DRIVER_VER.tar.gz
+      RUN tar zxf ice-$DRIVER_VER.tar.gz
+      WORKDIR ice-$DRIVER_VER/src
+      
+      ARG KERNEL_VERSION
+      RUN BUILD_KERNEL=$KERNEL_VERSION KSRC=/lib/modules/$KERNEL_VERSION/build/ make
+      
+      # TODO: Sign
+      
+      FROM ${IMAGE}
+      
+      ARG DRIVER_VER
+      
+      RUN microdnf install --disablerepo=* --enablerepo=ubi-8-baseos -y kmod
+      
+      COPY --from=builder /build/ice-$DRIVER_VER/src/ice.ko /ice-driver/
+      COPY scripts/load.sh scripts/unload.sh /scripts/
+      RUN chmod +x /scripts/load.sh && chmod +x /scripts/unload.sh
+  strategy:
+    dockerStrategy:
+      buildArgs:
+        - name: BUILD_IMAGE
+          value: {{ .Values.driverToolkitImage  }}
+        - name: KERNEL_VERSION
+          value: {{ .Values.rtKernelFullVersion }}
+        - name: IMAGE
+          value: registry.access.redhat.com/ubi8/ubi-minimal
+        {{- range $arg := .Values.buildArgs }}
+        - name: {{ $arg.name }}
+          value: {{ $arg.value }}
+        {{- end }}
+  output:
+    to:
+      kind: ImageStreamTag
+      name: {{.Values.specialResourceModule.metadata.name}}-{{.Values.groupName.driverContainer}}:v{{.Values.rtKernelFullVersion}}

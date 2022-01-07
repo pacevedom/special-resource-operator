@@ -284,6 +284,11 @@ func reconcileChart(srm *srov1beta1.SpecialResourceModule, metadata Metadata, re
 		step := nostate
 		step.Templates = append(nostate.Templates, stateYAML)
 
+		step.Values, err = chartutil.CoalesceValues(&step, srm.Spec.Set.Object)
+		if err != nil {
+			return result, err
+		}
+
 		rinfo, err := runtime.DefaultUnstructuredConverter.ToUnstructured(&metadata)
 		if err != nil {
 			return result, err
