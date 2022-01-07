@@ -16,8 +16,9 @@ spec:
     buildArgs:
       - name: DRIVER_VER
         value: "1.6.4"
+    registry: image-registry.openshift-image-registry.svc:5000/acm-ice
   watch:
-    - path: "$.status.history[*].image"
-      apiVersion: config.openshift.io/v1
-      kind: ClusterVersion
-      name: version
+    - path: "$.metadata.labels[*].openshiftVersion"
+      apiVersion: cluster.open-cluster-management.io/v1
+      kind: ManagedCluster
+      name: local-cluster
