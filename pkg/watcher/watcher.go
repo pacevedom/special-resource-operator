@@ -267,7 +267,7 @@ func (w *watcher) mapper(o client.Object) []reconcile.Request {
 			// Get current value of property at path
 			vals, err := GetJSONPath(path, *unstr)
 			if err != nil {
-				w.log.Error(err, "failed to obtain a values", "path", path)
+				w.log.Error(err, "failed to obtain a value", "path", path)
 			}
 			w.log.Info("obtained values @ path", "path", path, "values", vals)
 

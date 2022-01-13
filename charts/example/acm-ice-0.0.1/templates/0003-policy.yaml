@@ -2,7 +2,6 @@ apiVersion: policy.open-cluster-management.io/v1
 kind: Policy
 metadata:
  name: policy-{{.Values.specialResourceModule.metadata.name}}-mc
- namespace: lab-spoke-oot-policies
  annotations:
    policy.open-cluster-management.io/categories: CM Configuration Management
    policy.open-cluster-management.io/controls: CM-2 Baseline Configuration
@@ -31,7 +30,7 @@ spec:
                kind: MachineConfig
                metadata:
                  labels:
-                   machineconfiguration.openshift.io/role: master
+                   machineconfiguration.openshift.io/role: worker
                  name: 10-{{.Values.specialResourceModule.metadata.name}}
                spec:
                  config:
@@ -61,9 +60,10 @@ spec:
                          Type=oneshot
                          TimeoutStartSec=25m
                          RemainAfterExit=true
+                         #TODO: need kernel version here to trigger restart of services upon changes.
                          # Use bash to workaround https://github.com/coreos/rpm-ostree/issues/1936
-                         ExecStart=/usr/bin/bash -c "/usr/local/bin/{{.Values.specialResourceModule.metadata.name}} load {{.Values.registry}}/{{.Values.specialResourceModule.metadata.name}}-{{.Values.groupName.driverContainer}}:v{{.Values.kernelFullVersion}}"
-                         ExecStop=/usr/bin/bash -c "/usr/local/bin/{{.Values.specialResourceModule.metadata.name}} unload {{.Values.registry}}/{{.Values.specialResourceModule.metadata.name}}-{{.Values.groupName.driverContainer}}:v{{.Values.kernelFullVersion}}"
+                         ExecStart=/usr/bin/bash -c "/usr/local/bin/{{.Values.specialResourceModule.metadata.name}} load {{.Values.registry}}/{{.Values.specialResourceModule.metadata.name}}-{{.Values.groupName.driverContainer}}"
+                         ExecStop=/usr/bin/bash -c "/usr/local/bin/{{.Values.specialResourceModule.metadata.name}} unload {{.Values.registry}}/{{.Values.specialResourceModule.metadata.name}}-{{.Values.groupName.driverContainer}}"
                          StandardOutput=journal+console
  
                          [Install]

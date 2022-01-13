@@ -129,3 +129,6 @@ package utils
 // +kubebuilder:rbac:groups=infoscale.veritas.com,resources=infoscaleclusters,verbs=update;patch;get;list
 // +kubebuilder:rbac:groups=fpga.silicom.dk,resources=*,verbs=list;watch;get;create;update;patch;delete
 // +kubebuilder:rbac:groups=sts.silicom.com,resources=*,verbs=list;watch;get;create;update;patch;delete
+// +kubebuilder:rbac:groups=cluster.open-cluster-management.io,resources=*,verbs=list;watch;get
+// +kubebuilder:rbac:groups=policy.open-cluster-management.io,resources=*,verbs=create;update;patch;delete;get;list
+// +kubebuilder:rbac:groups=apps.open-cluster-management.io,resources=*,verbs=create;update;patch;delete;get;list

@@ -85,6 +85,15 @@ type OCPVersionInfo struct {
 	ClusterVersion  string
 }
 
+// SpecialResourceModuleReconciler reconciles a SpecialResourceModule object
+type SpecialResourceModuleReconciler struct {
+	Log     logr.Logger
+	Scheme  *runtime.Scheme
+	reg     registry.Registry
+	filter  filter.Filter
+	watcher watcher.Watcher
+}
+
 func getResource(kind, apiVersion, namespace, name string) (unstructured.Unstructured, error) {
 	obj := unstructured.Unstructured{}
 	obj.SetKind(kind)
@@ -132,7 +141,7 @@ func getImageFromVersion(entry string) (string, error) {
 		Nodes []versionNode `json:"nodes"`
 	}
 	res := versionRegex.FindStringSubmatch(entry)
-	full, major, minor := res[0], res[1], res[2]
+	full, major, minor := res[0], res[1], res[2] // pillar la longitud y hacer una lista? o algo asi? necesito mas numeritos.
 	var imageURL string
 	{
 		transport, _ := transport.HTTPWrappersForConfig(
@@ -182,11 +191,14 @@ func getImageFromVersion(entry string) (string, error) {
 				return "", err
 			}
 		}
+		if len(imageURL) == 0 {
+			return imageURL, fmt.Errorf("version %s not found", entry)
+		}
 	}
 	return imageURL, nil
 }
 
-func getOCPVersions(watchList []srov1beta1.SpecialResourceModuleWatch, reg registry.Registry) (map[string]OCPVersionInfo, error) {
+func (r *SpecialResourceModuleReconciler) getOCPVersions(watchList []srov1beta1.SpecialResourceModuleWatch, reg registry.Registry) (map[string]OCPVersionInfo, error) {
 	versionMap := make(map[string]OCPVersionInfo)
 	for _, resource := range watchList {
 		obj, err := getResource(resource.Kind, resource.ApiVersion, resource.Namespace, resource.Name)
@@ -208,7 +220,7 @@ func getOCPVersions(watchList []srov1beta1.SpecialResourceModuleWatch, reg regis
 			} else if strings.Contains(element, "@") || strings.Contains(element, ":") {
 				image = element
 			} else {
-				return nil, fmt.Errorf("Format error. %s is not a valid image/version", element)
+				return nil, fmt.Errorf("format error. %s is not a valid image/version", element)
 			}
 			info, err := getVersionInfoFromImage(image, reg)
 			if err != nil {
@@ -322,13 +334,8 @@ func FindSRM(a []srov1beta1.SpecialResourceModule, x string) (int, bool) {
 	return -1, false
 }
 
-// SpecialResourceModuleReconciler reconciles a SpecialResource object
-type SpecialResourceModuleReconciler struct {
-	Log     logr.Logger
-	Scheme  *runtime.Scheme
-	reg     registry.Registry
-	filter  filter.Filter
-	watcher watcher.Watcher
+func updateSpecialResourceModuleStatus(resource srov1beta1.SpecialResourceModule) error {
+	return clients.Interface.StatusUpdate(context.Background(), &resource)
 }
 
 func NewSpecialResourceModuleReconciler(log logr.Logger, scheme *runtime.Scheme, reg registry.Registry, f filter.Filter) SpecialResourceModuleReconciler {
@@ -338,10 +345,6 @@ func NewSpecialResourceModuleReconciler(log logr.Logger, scheme *runtime.Scheme,
 		reg:    reg,
 		filter: f,
 	}
-}
-
-func updateSpecialResourceModuleStatus(resource srov1beta1.SpecialResourceModule) error {
-	return clients.Interface.StatusUpdate(context.Background(), &resource)
 }
 
 // Reconcile Reconiliation entry point
@@ -377,7 +380,7 @@ func (r *SpecialResourceModuleReconciler) Reconcile(ctx context.Context, req ctr
 	}
 
 	//TODO cache images, wont change dynamically.
-	clusterVersions, err := getOCPVersions(resource.Spec.Watch, r.reg)
+	clusterVersions, err := r.getOCPVersions(resource.Spec.Watch, r.reg)
 	if err != nil {
 		return reconcile.Result{}, err
 	}

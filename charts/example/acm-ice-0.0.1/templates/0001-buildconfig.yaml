@@ -1,11 +1,3 @@
-apiVersion: image.openshift.io/v1
-kind: ImageStream
-metadata:
-  labels:
-    app: {{.Values.specialResourceModule.metadata.name}}-{{.Values.groupName.driverContainer}}
-  name: {{.Values.specialResourceModule.metadata.name}}-{{.Values.groupName.driverContainer}}
-spec: {}
----
 apiVersion: v1
 kind: ConfigMap
 metadata:
@@ -24,7 +16,6 @@ data:
     echo "Loaded out-of-tree ICE"
     lsmod | grep ice || true
 
-    sleep infinity
   unload.sh: |
     #!/bin/bash
     set -eu
@@ -57,7 +48,7 @@ spec:
     configMaps:
     - configMap:
         name: {{.Values.specialResourceModule.metadata.name}}-scripts
-      destinationDir: "./scripts/"
+      destinationDir: ./scripts
     dockerfile: |
       ARG IMAGE
       ARG BUILD_IMAGE
@@ -86,8 +77,8 @@ spec:
       RUN microdnf install --disablerepo=* --enablerepo=ubi-8-baseos -y kmod
       
       COPY --from=builder /build/ice-$DRIVER_VER/src/ice.ko /ice-driver/
-      COPY scripts/load.sh scripts/unload.sh /scripts/
-      RUN chmod +x /scripts/load.sh && chmod +x /scripts/unload.sh
+      COPY scripts/load.sh scripts/unload.sh /usr/local/bin
+      RUN chmod +x /usr/local/bin/load.sh && chmod +x /usr/local/bin/unload.sh
   strategy:
     dockerStrategy:
       buildArgs:
@@ -104,4 +95,4 @@ spec:
   output:
     to:
       kind: DockerImage
-      name: {{.Values.registry}}/{{.Values.specialResourceModule.metadata.name}}-{{.Values.groupName.driverContainer}}:v{{.Values.kernelFullVersion}}
+      name: {{.Values.registry}}/{{.Values.specialResourceModule.metadata.name}}-{{.Values.groupName.driverContainer}}:{{.Values.kernelFullVersion}}
