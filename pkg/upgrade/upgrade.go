@@ -1,6 +1,7 @@
 package upgrade
 
 import (
+	"fmt"
 	"runtime"
 	"strings"
 
@@ -28,8 +29,8 @@ func init() {
 
 type NodeVersion struct {
 	OSVersion      string                      `json:"OSVersion"`
-	OSMajor        string			   `json:"OSMajor"`
-	OSMajorMinor   string			   `json:"OSMajorMinor"`
+	OSMajor        string                      `json:"OSMajor"`
+	OSMajorMinor   string                      `json:"OSMajorMinor"`
 	ClusterVersion string                      `json:"clusterVersion"`
 	DriverToolkit  registry.DriverToolkitEntry `json:"driverToolkit"`
 }
@@ -104,6 +105,8 @@ func UpdateInfo(info map[string]NodeVersion, dtk registry.DriverToolkitEntry, im
 		log.Info("Updating version:", "dtk.KernelFullVersion", dtk.KernelFullVersion, "dtk.RTKernelFullVersion", dtk.RTKernelFullVersion)
 	}
 
+	match := false
+
 	if _, ok := info[dtk.KernelFullVersion]; ok {
 		osNFD := info[dtk.KernelFullVersion].OSVersion
 
@@ -118,7 +121,7 @@ func UpdateInfo(info map[string]NodeVersion, dtk registry.DriverToolkitEntry, im
 		nodeVersion.DriverToolkit = dtk
 
 		info[dtk.KernelFullVersion] = nodeVersion
-
+		match = true
 	}
 
 	if _, ok := info[dtk.RTKernelFullVersion]; ok {
@@ -135,8 +138,13 @@ func UpdateInfo(info map[string]NodeVersion, dtk registry.DriverToolkitEntry, im
 		nodeVersion.DriverToolkit = dtk
 
 		info[dtk.RTKernelFullVersion] = nodeVersion
-
+		match = true
 	}
+
+	if !match {
+		return nil, fmt.Errorf("DTK kernel not found running in the cluster. kernelFullVersion: %s. rtKernelFullVersion: %s", dtk.KernelFullVersion, dtk.RTKernelFullVersion)
+	}
+
 	return info, nil
 }
 
