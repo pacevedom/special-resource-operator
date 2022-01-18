@@ -3,7 +3,6 @@ kind: SpecialResourceModule
 metadata:
   name: acm-ice
 spec:
-  look: atthisfield
   namespace: acm-ice
   chart:
     name: acm-ice
@@ -17,7 +16,6 @@ spec:
     buildArgs:
       - name: DRIVER_VER
         value: "1.6.4"
-    #registry: image-registry.openshift-image-registry.svc:5000/acm-ice
     registry: quay.io/pacevedo
   watch:
     - path: "$.metadata.labels.openshiftVersion"

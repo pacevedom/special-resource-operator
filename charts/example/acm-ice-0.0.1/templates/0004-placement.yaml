@@ -3,12 +3,15 @@ kind: PlacementRule
 metadata:
  name: {{.Values.specialResourceModule.metadata.name}}-placement
 spec:
- clusterSelector:
-   matchExpressions:
-   - key: name
-     operator: In
-     values:
-     - local-cluster
+  clusterConditions:
+  - status: "True"
+    type: ManagedClusterConditionAvailable
+  clusterSelector:
+    matchExpressions:
+    - key: openshiftVersion
+      operator: In
+      values:
+      - {{ .Values.clusterVersion | quote }}
 ---
 apiVersion: policy.open-cluster-management.io/v1
 kind: PlacementBinding
