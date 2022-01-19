@@ -8,10 +8,10 @@ spec:
     type: ManagedClusterConditionAvailable
   clusterSelector:
     matchExpressions:
-    - key: openshiftVersion
-      operator: In
+    - key: name
+      operator: NotIn
       values:
-      - {{ .Values.clusterVersion | quote }}
+      - local-cluster
 ---
 apiVersion: policy.open-cluster-management.io/v1
 kind: PlacementBinding
