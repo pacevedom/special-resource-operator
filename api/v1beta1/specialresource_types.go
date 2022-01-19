@@ -197,8 +197,6 @@ type SpecialResourceModuleSpec struct {
 	// +kubebuilder:pruning:PreserveUnknownFields
 	// +kubebuilder:validation:EmbeddedResource
 	Set unstructured.Unstructured `json:"set,omitempty"`
-	// +kubebuilder:validation:Optional
-	DriverContainer SpecialResourceDriverContainer `json:"driverContainer,omitempty"`
 	// +kubebuilder:validation:Required
 	Watch []SpecialResourceModuleWatch `json:"watch"`
 }
