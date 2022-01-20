@@ -58,9 +58,8 @@ spec:
  
                          [Service]
                          Type=oneshot
-                         TimeoutStartSec=25m
+                         Restart=on-failure
                          RemainAfterExit=true
-                         #TODO: need kernel version here to trigger restart of services upon changes.
                          # Use bash to workaround https://github.com/coreos/rpm-ostree/issues/1936
                          ExecStart=/usr/bin/bash -c "/usr/local/bin/{{.Values.specialResourceModule.metadata.name}} load {{.Values.registry}}/{{.Values.specialResourceModule.metadata.name}}-{{.Values.groupName.driverContainer}}"
                          ExecStop=/usr/bin/bash -c "/usr/local/bin/{{.Values.specialResourceModule.metadata.name}} unload {{.Values.registry}}/{{.Values.specialResourceModule.metadata.name}}-{{.Values.groupName.driverContainer}}"
