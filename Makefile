@@ -128,7 +128,6 @@ undeploy: kustomize ## Undeploy controller from the K8s cluster specified in ~/.
 	$(KUSTOMIZE) build config/namespace | $(CLUSTER_CLIENT) delete --ignore-not-found -f -
 	$(KUSTOMIZE) build config/default | $(CLUSTER_CLIENT) delete --ignore-not-found -f -
 
-
 # SRO specific configuration to set namespace of all manifests
 configure:
 	# TODO kustomize cannot set name of namespace according to settings, hack TODO

@@ -58,10 +58,9 @@ spec:
  
                          [Service]
                          Type=oneshot
-                         Restart=on-failure
                          RemainAfterExit=true
                          # Use bash to workaround https://github.com/coreos/rpm-ostree/issues/1936
-                         ExecStart=/usr/bin/bash -c "/usr/local/bin/{{.Values.specialResourceModule.metadata.name}} load {{.Values.registry}}/{{.Values.specialResourceModule.metadata.name}}-{{.Values.groupName.driverContainer}}"
+                         ExecStart=/usr/bin/bash -c "while ! /usr/local/bin/{{.Values.specialResourceModule.metadata.name}} load {{.Values.registry}}/{{.Values.specialResourceModule.metadata.name}}-{{.Values.groupName.driverContainer}}; do sleep 10; done"
                          ExecStop=/usr/bin/bash -c "/usr/local/bin/{{.Values.specialResourceModule.metadata.name}} unload {{.Values.registry}}/{{.Values.specialResourceModule.metadata.name}}-{{.Values.groupName.driverContainer}}"
                          StandardOutput=journal+console
  

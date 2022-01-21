@@ -44,6 +44,7 @@ import (
 
 	imagev1 "github.com/openshift/api/image/v1"
 
+	k8serrors "k8s.io/apimachinery/pkg/api/errors"
 	"k8s.io/apimachinery/pkg/apis/meta/v1/unstructured"
 	"k8s.io/apimachinery/pkg/runtime"
 	"k8s.io/client-go/rest"
@@ -203,6 +204,9 @@ func (r *SpecialResourceModuleReconciler) getOCPVersions(watchList []srov1beta1.
 	for _, resource := range watchList {
 		obj, err := getResource(resource.Kind, resource.ApiVersion, resource.Namespace, resource.Name)
 		if err != nil {
+			if k8serrors.IsNotFound(err) {
+				continue
+			}
 			return nil, err
 		}
 		result, err := watcher.GetJSONPath(resource.Path, obj)
@@ -368,7 +372,10 @@ func (r *SpecialResourceModuleReconciler) Reconcile(ctx context.Context, req ctr
 	}
 	resource := srm.Items[request]
 
-	//TODO check for deletion timestamp.
+	if resource.GetDeletionTimestamp() != nil {
+		logModule.Info("Deleted resource")
+		return reconcile.Result{}, nil
+	}
 
 	if err := r.watcher.ReconcileWatches(resource); err != nil {
 		logModule.Error(err, "failed to update watched resources")
