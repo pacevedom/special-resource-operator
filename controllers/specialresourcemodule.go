@@ -36,13 +36,12 @@ import (
 	"github.com/openshift-psap/special-resource-operator/pkg/filter"
 	"github.com/openshift-psap/special-resource-operator/pkg/helmer"
 	"github.com/openshift-psap/special-resource-operator/pkg/registry"
+	"github.com/openshift-psap/special-resource-operator/pkg/resource"
 	"github.com/openshift-psap/special-resource-operator/pkg/watcher"
 	buildv1 "github.com/openshift/api/build/v1"
 	"github.com/pkg/errors"
 	"helm.sh/helm/v3/pkg/chart"
 	"helm.sh/helm/v3/pkg/chartutil"
-
-	imagev1 "github.com/openshift/api/image/v1"
 
 	k8serrors "k8s.io/apimachinery/pkg/api/errors"
 	"k8s.io/apimachinery/pkg/apis/meta/v1/unstructured"
@@ -236,12 +235,25 @@ func (r *SpecialResourceModuleReconciler) getOCPVersions(watchList []srov1beta1.
 	return versionMap, nil
 }
 
-func createNamespace(name string) error {
-	ns := unstructured.Unstructured{}
-	ns.SetKind("Namespace")
-	ns.SetAPIVersion("v1")
-	ns.SetName(name)
-	return clients.Interface.Create(context.Background(), &ns)
+func createNamespace(r srov1beta1.SpecialResourceModule) error {
+
+	ns := []byte(`apiVersion: v1
+kind: Namespace
+metadata:
+  annotations:
+    specialresource.openshift.io/wait: "true"
+    openshift.io/cluster-monitoring: "true"
+  name: `)
+
+	if r.Spec.Namespace != "" {
+		add := []byte(r.Spec.Namespace)
+		ns = append(ns, add...)
+	} else {
+		r.Spec.Namespace = r.Name
+		add := []byte(r.Spec.Namespace)
+		ns = append(ns, add...)
+	}
+	return resource.CreateFromYAML(ns, false, &r, r.Name, "", nil, "", "")
 }
 
 func getMetadata(srm srov1beta1.SpecialResourceModule, info OCPVersionInfo) Metadata {
@@ -382,9 +394,7 @@ func (r *SpecialResourceModuleReconciler) Reconcile(ctx context.Context, req ctr
 		return reconcile.Result{}, err
 	}
 
-	if err := createNamespace(resource.Spec.Namespace); err != nil {
-		//TODO not an error if it already exists. Do it more efficiently.
-	}
+	_ = createNamespace(resource)
 
 	//TODO cache images, wont change dynamically.
 	clusterVersions, err := r.getOCPVersions(resource.Spec.Watch, r.reg)
@@ -448,7 +458,6 @@ func (r *SpecialResourceModuleReconciler) SetupWithManager(mgr ctrl.Manager) err
 	if platform == "OCP" {
 		c, err := ctrl.NewControllerManagedBy(mgr).
 			For(&srov1beta1.SpecialResourceModule{}).
-			Owns(&imagev1.ImageStream{}).
 			Owns(&buildv1.BuildConfig{}).
 			WithOptions(controller.Options{
 				MaxConcurrentReconciles: 1,
