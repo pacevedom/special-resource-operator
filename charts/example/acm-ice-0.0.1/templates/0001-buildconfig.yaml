@@ -33,8 +33,8 @@ apiVersion: build.openshift.io/v1
 kind: BuildConfig
 metadata:
   labels:
-    app: {{.Values.specialResourceModule.metadata.name}}-{{.Values.groupName.driverBuild}}
-  name: {{.Values.specialResourceModule.metadata.name}}-{{.Values.groupName.driverBuild}}
+    app: {{.Values.specialResourceModule.metadata.name}}-{{.Values.clusterVersion}}
+  name: {{.Values.specialResourceModule.metadata.name}}-{{.Values.clusterVersion}}
   annotations:
     specialresource.openshift.io/wait: "true"
 spec:
