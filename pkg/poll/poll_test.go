@@ -259,60 +259,56 @@ var _ = Context("Waiting for resource", func() {
 })
 
 var _ = Context("Waiting for Build", func() {
-	When("resource is not created yet", func() {
-		It("should fail", func() {
-			// forResourceAvailability
-			mockClientsInterface.EXPECT().Get(Any(), Any(), Any()).Return(nil)
-			// forBuild
-			mockClientsInterface.EXPECT().List(Any(), Any(), Any()).Return(nil)
-			Expect(pa.ForResource(context.Background(), prepareUnstructured("BuildConfig", "build-name", namespace))).To(Not(Succeed()))
-		})
+	It("should fail when resource is not created yet", func() {
+		// forResourceAvailability
+		mockClientsInterface.EXPECT().Get(Any(), Any(), Any()).Return(nil)
+		// forBuild
+		mockClientsInterface.EXPECT().List(Any(), Any(), Any()).Return(nil)
+		Expect(pa.ForResource(context.Background(), prepareUnstructured("BuildConfig", "build-name", namespace))).To(Not(Succeed()))
 	})
-	When("resource is created", func() {
-		It("belongs to my BuildConfig and is finished", func() {
-			// forResourceAvailability
-			mockClientsInterface.EXPECT().Get(Any(), Any(), Any()).Return(nil)
-			// forBuild
-			mockClientsInterface.EXPECT().
-				List(Any(), Any(), Any()).
-				DoAndReturn(func(_ context.Context, obj client.ObjectList, _ ...client.ListOption) error {
-					build := prepareUnstructured("Build", "build-name-1", namespace)
-					unstructured.SetNestedSlice(build.Object, []interface{}{map[string]interface{}{
-						"name": "build-name",
-					}}, "metadata", "ownerReferences")
-					u := obj.(*unstructured.UnstructuredList)
-					u.Items = append(u.Items, *build)
-					return nil
-				})
-			// forResourceFullAvailability
-			mockClientsInterface.EXPECT().Get(Any(), Any(), Any()).
-				DoAndReturn(func(_ context.Context, _ client.ObjectKey, o client.Object) error {
-					u := o.(*unstructured.Unstructured)
-					Expect(unstructured.SetNestedField(u.Object, "Complete", "status", "phase")).To(Succeed())
-					return nil
-				})
+	It("resource is created and belongs to my BuildConfig and is finished", func() {
+		// forResourceAvailability
+		mockClientsInterface.EXPECT().Get(Any(), Any(), Any()).Return(nil)
+		// forBuild
+		mockClientsInterface.EXPECT().
+			List(Any(), Any(), Any()).
+			DoAndReturn(func(_ context.Context, obj client.ObjectList, _ ...client.ListOption) error {
+				build := prepareUnstructured("Build", "build-name-1", namespace)
+				Expect(unstructured.SetNestedSlice(build.Object, []interface{}{map[string]interface{}{
+					"name": "build-name",
+				}}, "metadata", "ownerReferences")).To(Succeed())
+				u := obj.(*unstructured.UnstructuredList)
+				u.Items = append(u.Items, *build)
+				return nil
+			})
+		// forResourceFullAvailability
+		mockClientsInterface.EXPECT().Get(Any(), Any(), Any()).
+			DoAndReturn(func(_ context.Context, _ client.ObjectKey, o client.Object) error {
+				u := o.(*unstructured.Unstructured)
+				Expect(unstructured.SetNestedField(u.Object, "Complete", "status", "phase")).To(Succeed())
+				return nil
+			})
 
-			Expect(pa.ForResource(context.Background(), prepareUnstructured("BuildConfig", "build-name", namespace))).To(Succeed())
-		})
-		It("does not belong to my BuildConfig", func() {
-			// forResourceAvailability
-			mockClientsInterface.EXPECT().Get(Any(), Any(), Any()).Return(nil)
+		Expect(pa.ForResource(context.Background(), prepareUnstructured("BuildConfig", "build-name", namespace))).To(Succeed())
+	})
+	It("resource is created and does not belong to my BuildConfig", func() {
+		// forResourceAvailability
+		mockClientsInterface.EXPECT().Get(Any(), Any(), Any()).Return(nil)
 
-			// forBuild
-			mockClientsInterface.EXPECT().
-				List(Any(), Any(), Any()).
-				DoAndReturn(func(_ context.Context, obj client.ObjectList, _ ...client.ListOption) error {
-					build := prepareUnstructured("Build", "build-name-1", namespace)
-					unstructured.SetNestedSlice(build.Object, []interface{}{map[string]interface{}{
-						"name": "other-build-name",
-					}}, "metadata", "ownerReferences")
-					u := obj.(*unstructured.UnstructuredList)
-					u.Items = append(u.Items, *build)
-					return nil
-				})
+		// forBuild
+		mockClientsInterface.EXPECT().
+			List(Any(), Any(), Any()).
+			DoAndReturn(func(_ context.Context, obj client.ObjectList, _ ...client.ListOption) error {
+				build := prepareUnstructured("Build", "build-name-1", namespace)
+				Expect(unstructured.SetNestedSlice(build.Object, []interface{}{map[string]interface{}{
+					"name": "other-build-name",
+				}}, "metadata", "ownerReferences")).To(Succeed())
+				u := obj.(*unstructured.UnstructuredList)
+				u.Items = append(u.Items, *build)
+				return nil
+			})
 
-			Expect(pa.ForResource(context.Background(), prepareUnstructured("BuildConfig", "build-name", namespace))).To(Not(Succeed()))
-		})
+		Expect(pa.ForResource(context.Background(), prepareUnstructured("BuildConfig", "build-name", namespace))).To(Not(Succeed()))
 	})
 })
 

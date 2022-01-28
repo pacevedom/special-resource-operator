@@ -429,19 +429,17 @@ func (p *pollActions) forBuild(ctx context.Context, obj *unstructured.Unstructur
 
 	var build *unstructured.Unstructured
 	for _, b := range builds.Items {
-		slice, found, err := unstructured.NestedSlice(b.Object, "metadata", "ownerReferences")
+		slice, _, err := unstructured.NestedSlice(b.Object, "metadata", "ownerReferences")
 		if err != nil {
 			return err
 		}
-		found = false
 		for _, element := range slice {
 			if name, ok := element.(map[string]interface{})["name"]; ok && name == obj.GetName() {
-				found = true
+				build = &b
 				break
 			}
 		}
-		if found {
-			build = &b
+		if build != nil {
 			break
 		}
 	}
