@@ -22,7 +22,8 @@ spec:
       apiVersion: cluster.open-cluster-management.io/v1
       kind: ManagedCluster
       name: spoke1
-    - path: "$.metadata.labels.openshiftVersion"
+    #- path: $.status.clusterClaims[?(@.name == 'osimage.openshift.io')].value # disconnected version
+    - path: "$.metadata.labels.openshiftVersion" # connected version
       apiVersion: cluster.open-cluster-management.io/v1
       kind: ManagedCluster
       name: spoke2
