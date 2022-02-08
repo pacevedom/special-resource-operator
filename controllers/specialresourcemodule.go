@@ -141,7 +141,7 @@ func getImageFromVersion(entry string) (string, error) {
 		Nodes []versionNode `json:"nodes"`
 	}
 	res := versionRegex.FindStringSubmatch(entry)
-	full, major, minor := res[0], res[1], res[2] // pillar la longitud y hacer una lista? o algo asi? necesito mas numeritos.
+	full, major, minor := res[0], res[1], res[2]
 	var imageURL string
 	{
 		transport, _ := transport.HTTPWrappersForConfig(
@@ -198,7 +198,8 @@ func getImageFromVersion(entry string) (string, error) {
 	return imageURL, nil
 }
 
-func (r *SpecialResourceModuleReconciler) getOCPVersions(watchList []srov1beta1.SpecialResourceModuleWatch, reg registry.Registry) (map[string]OCPVersionInfo, error) {
+func (r *SpecialResourceModuleReconciler) getOCPVersions(watchList []srov1beta1.SpecialResourceModuleWatch) (map[string]OCPVersionInfo, error) {
+	logVersion := r.Log.WithName(color.Print("versions", color.Purple))
 	versionMap := make(map[string]OCPVersionInfo)
 	for _, resource := range watchList {
 		obj, err := getResource(resource.Kind, resource.ApiVersion, resource.Namespace, resource.Name)
@@ -219,13 +220,15 @@ func (r *SpecialResourceModuleReconciler) getOCPVersions(watchList []srov1beta1.
 				if err != nil {
 					return nil, err
 				}
+				logVersion.Info("Version from regex", "element", element)
 				image = tmp
 			} else if strings.Contains(element, "@") || strings.Contains(element, ":") {
+				logVersion.Info("Version from image", "element", element)
 				image = element
 			} else {
 				return nil, fmt.Errorf("format error. %s is not a valid image/version", element)
 			}
-			info, err := getVersionInfoFromImage(image, reg)
+			info, err := getVersionInfoFromImage(image, r.reg)
 			if err != nil {
 				return nil, err
 			}
@@ -397,7 +400,7 @@ func (r *SpecialResourceModuleReconciler) Reconcile(ctx context.Context, req ctr
 	_ = createNamespace(resource)
 
 	//TODO cache images, wont change dynamically.
-	clusterVersions, err := r.getOCPVersions(resource.Spec.Watch, r.reg)
+	clusterVersions, err := r.getOCPVersions(resource.Spec.Watch)
 	if err != nil {
 		return reconcile.Result{}, err
 	}
