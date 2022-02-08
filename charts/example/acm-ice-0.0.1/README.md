@@ -9,6 +9,7 @@
   * [Helm charts](#helm-charts)
 * [Example](#example)
   * [ACM-ICE Recipe](#acm-ice-recipe)
+  * [Connected vs disconnected](#connected-vs-disconnected)
   * [Checks](#checks)
 
 ## Resources
@@ -104,21 +105,8 @@ If we take a close look at the new section we see we can specify lists of resour
 With this we are able to watch any resource in the cluster only needing list permissions in RBAC. This means there is no specific code/support for any of the resources we can watch in SRO.
 
 The idea behind the watch resource is to get the kernel version + OCP version we need to set up when building the driver containers. This can be obtained in two different ways:
-* If we are using a connected environment, we can specify only the OCP version following semver2: `<major>.<minor>.<z stream>`. With this, SRO will check on [OCP API](https://api.openshift.com/api/upgrades_info) to retrieve all the images associated to that version. Once there, pulling the last layer of the associated DTK will render the kernel version we should be using.
-* If we are in a disconnected environment we need a way of getting the same information as before. The challenging part is to get the OS image from a version, and since we have nowhere to look, we need to use something local to the hub cluster. An example would be to use `clusterversion`, which contains the history for all the versions a cluster has gone through. Here we will find the OS images we need. From there, the method is just analogous to the connected version, extract the kernel from the DTK in each version. Example:
-```bash
-$ KUBECONFIG=~/hub/auth/kubeconfig oc get clusterversion -o json | jq -r '.items[].status.history'
-[
-  {
-    "completionTime": "2022-01-20T10:55:10Z",
-    "image": "quay.io/openshift-release-dev/ocp-release@sha256:bb1987fb718f81fb30bec4e0e1cd5772945269b77006576b02546cf84c77498e",
-    "startedTime": "2022-01-20T10:29:38Z",
-    "state": "Completed",
-    "verified": false,
-    "version": "4.9.15"
-  }
-]
-```
+* Using only the OCP version following semver2: `<major>.<minor>.<z stream>`. With this, SRO will check on [OCP API](https://api.openshift.com/api/upgrades_info) to retrieve all the images associated to that version. Once there, pulling the last layer of the associated DTK will render the kernel version we should be using. This is the connected environment approach.
+* Specify a base image for the nodes. This will be in an image registry format and must match the OS running in the nodes where we want to deploy our driver container. Since we are reading this data from the hub we need the base images because there is no other way of looking up which DTK a node is using. A possible way of doing it when using ACM is to use `ClusterClaims` in the spokes. An example can be seen in the next section. This is the disconnected environment approach.
 
 Whatever approach we are following we always need to extract information in the same order:
 * Get the OS image for an OCP version.
@@ -266,6 +254,129 @@ spec:
 ```
 
 This can be improved to use the same OCP version label to produce gradual rollouts that follow the upgrade pace in the spokes.
+
+### Connected vs disconnected
+Having connected and disconnected environments differs in the way SRO is able to retrieve the information about a concrete OCP version.
+
+When running on connected environments, SRO is able to check base images online while sourcing on OCP versions from the `watch` section in the `SpecialResourceModule`. An example:
+```yaml
+watch:
+  - path: "$.metadata.labels.openshiftVersion"
+    apiVersion: cluster.open-cluster-management.io/v1
+    kind: ManagedCluster
+    name: spoke1
+  - path: "$.metadata.labels.openshiftVersion"
+    apiVersion: cluster.open-cluster-management.io/v1
+    kind: ManagedCluster
+    name: spoke2
+```
+Here we see the OCP versions are fetched from the ACM `ManagedCluster` resource as a label, which is automatically filled in by the ACM operators. This will later on turn into queries to `api.openshift.com` to retrieve the base images for those versions.
+
+When running on disconnected environments we dont have `api.openshift.com` available. Given that we can not check the images associated to an OCP version from the hub, we need to either have the version available, meaning the hub should be at the highest available versions taken from the spokes. This is not a feasible requirement, as we would need to upgrade the hub prior to all spokes and take unnecessary risks while doing so. We rely instead on a feature from ACM called `ClusterClaim` resources. These are claims in the form of `name: value` the spokes can make and inform the hub, which ingests this data and incorporates it into the `status` for the `ManagedCluster` resource.
+
+By defining a `ClusterClaim` in the spokes referencing the base image in use:
+```yaml
+$ KUBECONFIG=~/spoke2/auth/kubeconfig oc get clusterclaims
+NAME                                            AGE
+consoleurl.cluster.open-cluster-management.io   5d21h
+controlplanetopology.openshift.io               5d21h
+id.k8s.io                                       5d21h
+id.openshift.io                                 5d21h
+infrastructure.openshift.io                     5d21h
+kubeversion.open-cluster-management.io          5d21h
+name                                            5d21h
+osimage.openshift.io                            17h
+platform.open-cluster-management.io             5d21h
+product.open-cluster-management.io              5d21h
+region.open-cluster-management.io               5d21h
+version.openshift.io                            5d21h
+
+$ KUBECONFIG=~/spoke2/auth/kubeconfig oc get clusterclaims osimage.openshift.io -o yaml
+apiVersion: cluster.open-cluster-management.io/v1alpha1
+kind: ClusterClaim
+metadata:
+  creationTimestamp: "2022-02-07T15:47:38Z"
+  generation: 2
+  name: osimage.openshift.io
+  resourceVersion: "430538"
+  uid: 490ce31b-2025-474d-9cb5-025ff716d9d5
+spec:
+  value: quay.io/openshift-release-dev/ocp-release@sha256:bb1987fb718f81fb30bec4e0e1cd5772945269b77006576b02546cf84c77498e
+```
+
+We get the result in the hub for the `ManagedCluster` resource:
+```yaml
+$ KUBECONFIG=~/hub/auth/kubeconfig oc get managedclusters spoke2 -o yaml
+apiVersion: cluster.open-cluster-management.io/v1
+kind: ManagedCluster
+metadata:
+  annotations:
+    open-cluster-management/created-via: other
+  creationTimestamp: "2022-02-02T11:31:32Z"
+  finalizers:
+  - managedcluster-import-controller.open-cluster-management.io/cleanup
+  - managedclusterinfo.finalizers.open-cluster-management.io
+  - open-cluster-management.io/managedclusterrole
+  - managedcluster-import-controller.open-cluster-management.io/manifestwork-cleanup
+  - cluster.open-cluster-management.io/api-resource-cleanup
+  - agent.open-cluster-management.io/klusterletaddonconfig-cleanup
+  generation: 2
+  labels:
+    cloud: Amazon
+    clusterID: d777499d-bf5a-4016-8b34-6343befc8f6e
+    feature.open-cluster-management.io/addon-application-manager: available
+    feature.open-cluster-management.io/addon-cert-policy-controller: available
+    feature.open-cluster-management.io/addon-iam-policy-controller: available
+    feature.open-cluster-management.io/addon-policy-controller: available
+    feature.open-cluster-management.io/addon-search-collector: available
+    feature.open-cluster-management.io/addon-work-manager: available
+    name: spoke2
+    openshiftVersion: 4.9.15
+    vendor: OpenShift
+  name: spoke2
+  resourceVersion: "14893773"
+  uid: 5fa34b27-58e4-46e6-a4a7-65162c9a394b
+spec:
+  ...
+status:
+  [...]
+  clusterClaims:
+  - name: id.k8s.io
+    value: spoke2
+  - name: kubeversion.open-cluster-management.io
+    value: v1.22.3+e790d7f
+  - name: platform.open-cluster-management.io
+    value: AWS
+  - name: product.open-cluster-management.io
+    value: OpenShift
+  - name: consoleurl.cluster.open-cluster-management.io
+    value: https://console-openshift-console.apps.acm-spoke2.edge-sro.rhecoeng.com
+  - name: controlplanetopology.openshift.io
+    value: HighlyAvailable
+  - name: id.openshift.io
+    value: d777499d-bf5a-4016-8b34-6343befc8f6e
+  - name: infrastructure.openshift.io
+    value: '{"infraName":"acm-spoke2-xmkpw"}'
+  - name: osimage.openshift.io
+    value: quay.io/openshift-release-dev/ocp-release@sha256:bb1987fb718f81fb30bec4e0e1cd5772945269b77006576b02546cf84c77498e
+  - name: region.open-cluster-management.io
+    value: eu-central-1
+  - name: version.openshift.io
+    value: 4.9.15
+```
+
+So now we have to watch on those claims from `SpecialResourceModule`:
+```yaml
+watch:
+  - path: $.status.clusterClaims[?(@.name == 'osimage.openshift.io')].value
+    apiVersion: cluster.open-cluster-management.io/v1
+    kind: ManagedCluster
+    name: spoke1
+  - path: $.status.clusterClaims[?(@.name == 'osimage.openshift.io')].value
+    apiVersion: cluster.open-cluster-management.io/v1
+    kind: ManagedCluster
+    name: spoke2
+```
 
 ### Checks
 After setting up the cluster and installing both the modified SRO and the ACM-ICE template using the following commands:
