@@ -99,7 +99,7 @@ If we take a close look at the new section we see we can specify lists of resour
 * `path`: A jsonpath pointing to a string or a list of strings where we can find OCP versions or base OS images. Mandatory.
 * `apiVersion`: The `apiVersion` of the resource we want to watch. Mandatory.
 * `kind`: The `kind` of the resource we want to watch. Mandatory.
-* `name`: The `name` of the resource we want to watch. Mandatory.
+* `name`: The `name` of the resource we want to watch. If not provided it will watch on all resources sharing `apiVersion` and `kind`, irrespective of names. Optional.
 * `namespace`: The `namespace` of the resource we want to watch. Optional.
 
 With this we are able to watch any resource in the cluster only needing list permissions in RBAC. This means there is no specific code/support for any of the resources we can watch in SRO.
