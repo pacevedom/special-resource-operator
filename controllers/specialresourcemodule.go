@@ -94,7 +94,7 @@ type SpecialResourceModuleReconciler struct {
 	watcher watcher.Watcher
 }
 
-func getResource(kind, apiVersion, namespace, name string) ([]unstructured.Unstructured, error) {
+func getAllResources(kind, apiVersion, namespace, name string) ([]unstructured.Unstructured, error) {
 	if name == "" {
 		var l unstructured.UnstructuredList
 		l.SetKind(kind)
@@ -113,6 +113,31 @@ func getResource(kind, apiVersion, namespace, name string) ([]unstructured.Unstr
 	key := client.ObjectKeyFromObject(&obj)
 	err := clients.Interface.Get(context.Background(), key, &obj)
 	return []unstructured.Unstructured{obj}, err
+}
+
+func filterResources(selector srov1beta1.SpecialResourceModuleSelector, objs []unstructured.Unstructured) ([]unstructured.Unstructured, error) {
+	//TODO make the selector a list
+	if selector.Path == "" || selector.Value == "" {
+		return objs, nil
+	}
+	filteredObjects := make([]unstructured.Unstructured, 0)
+	for _, obj := range objs {
+		candidates, err := watcher.GetJSONPath(selector.Path, obj)
+		if err != nil {
+			return filteredObjects, err
+		}
+		found := false
+		for _, candidate := range candidates {
+			if candidate == selector.Value {
+				found = true
+				break
+			}
+		}
+		if found {
+			filteredObjects = append(filteredObjects, obj)
+		}
+	}
+	return filteredObjects, nil
 }
 
 func getVersionInfoFromImage(entry string, reg registry.Registry) (OCPVersionInfo, error) {
@@ -212,13 +237,22 @@ func (r *SpecialResourceModuleReconciler) getOCPVersions(watchList []srov1beta1.
 	logVersion := r.Log.WithName(color.Print("versions", color.Purple))
 	versionMap := make(map[string]OCPVersionInfo)
 	for _, resource := range watchList {
-		objs, err := getResource(resource.Kind, resource.ApiVersion, resource.Namespace, resource.Name)
+		// get all resources -> filter them -> keep working.
+		// so lets get to it.
+
+		objs, err := getAllResources(resource.Kind, resource.ApiVersion, resource.Namespace, resource.Name)
 		if err != nil {
 			if k8serrors.IsNotFound(err) {
 				continue
 			}
 			return nil, err
 		}
+		logVersion.Info("pre filter", "len", len(objs))
+		objs, err = filterResources(resource.Selector, objs)
+		if err != nil {
+			return nil, err
+		}
+		logVersion.Info("post filter", "len", len(objs))
 		for _, obj := range objs {
 			result, err := watcher.GetJSONPath(resource.Path, obj)
 			if err != nil {

@@ -93,6 +93,16 @@ spec:
                       type: string
                     path:
                       type: string
+                    selector:
+                      properties:
+                        path:
+                          type: string
+                        value:
+                          type: string
+                      required:
+                      - path
+                      - value
+                      type: object
                   required:
                   - apiVersion
                   - kind

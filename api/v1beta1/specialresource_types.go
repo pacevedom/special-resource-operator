@@ -175,17 +175,26 @@ type SpecialResourceList struct {
 	Items []SpecialResource `json:"items"`
 }
 
+type SpecialResourceModuleSelector struct {
+	// +kubebuilder:validation:Required
+	Path string `json:"path"`
+	// +kubebuilder:validation:Required
+	Value string `json:"value"`
+}
+
 type SpecialResourceModuleWatch struct {
 	// +kubebuilder:validation:Required
 	ApiVersion string `json:"apiVersion"`
 	// +kubebuilder:validation:Required
 	Kind string `json:"kind"`
 	// +kubebuilder:validation:Optional
-	Name string `json:"name"`
+	Name string `json:"name,omitempty"`
 	// +kubebuilder:validation:Optional
-	Namespace string `json:"namespace"`
+	Namespace string `json:"namespace,omitempty"`
 	// +kubebuilder:validation:Required
 	Path string `json:"path"`
+	// +kubebuilder:validation:Optional
+	Selector SpecialResourceModuleSelector `json:"selector,omitempty"`
 }
 
 type SpecialResourceModuleSpec struct {
