@@ -96,7 +96,6 @@ spec:
                   required:
                   - apiVersion
                   - kind
-                  - name
                   - path
                   type: object
                 type: array

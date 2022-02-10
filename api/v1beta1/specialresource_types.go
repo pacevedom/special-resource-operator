@@ -180,7 +180,7 @@ type SpecialResourceModuleWatch struct {
 	ApiVersion string `json:"apiVersion"`
 	// +kubebuilder:validation:Required
 	Kind string `json:"kind"`
-	// +kubebuilder:validation:Required
+	// +kubebuilder:validation:Optional
 	Name string `json:"name"`
 	// +kubebuilder:validation:Optional
 	Namespace string `json:"namespace"`

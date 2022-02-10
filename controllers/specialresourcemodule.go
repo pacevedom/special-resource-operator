@@ -94,7 +94,17 @@ type SpecialResourceModuleReconciler struct {
 	watcher watcher.Watcher
 }
 
-func getResource(kind, apiVersion, namespace, name string) (unstructured.Unstructured, error) {
+func getResource(kind, apiVersion, namespace, name string) ([]unstructured.Unstructured, error) {
+	if name == "" {
+		var l unstructured.UnstructuredList
+		l.SetKind(kind)
+		l.SetAPIVersion(apiVersion)
+		err := clients.Interface.List(context.Background(), &l)
+		if err != nil {
+			return nil, err
+		}
+		return l.Items, nil
+	}
 	obj := unstructured.Unstructured{}
 	obj.SetKind(kind)
 	obj.SetAPIVersion(apiVersion)
@@ -102,7 +112,7 @@ func getResource(kind, apiVersion, namespace, name string) (unstructured.Unstruc
 	obj.SetName(name)
 	key := client.ObjectKeyFromObject(&obj)
 	err := clients.Interface.Get(context.Background(), key, &obj)
-	return obj, err
+	return []unstructured.Unstructured{obj}, err
 }
 
 func getVersionInfoFromImage(entry string, reg registry.Registry) (OCPVersionInfo, error) {
@@ -202,37 +212,40 @@ func (r *SpecialResourceModuleReconciler) getOCPVersions(watchList []srov1beta1.
 	logVersion := r.Log.WithName(color.Print("versions", color.Purple))
 	versionMap := make(map[string]OCPVersionInfo)
 	for _, resource := range watchList {
-		obj, err := getResource(resource.Kind, resource.ApiVersion, resource.Namespace, resource.Name)
+		objs, err := getResource(resource.Kind, resource.ApiVersion, resource.Namespace, resource.Name)
 		if err != nil {
 			if k8serrors.IsNotFound(err) {
 				continue
 			}
 			return nil, err
 		}
-		result, err := watcher.GetJSONPath(resource.Path, obj)
-		if err != nil {
-			return nil, err
-		}
-		for _, element := range result {
-			var image string
-			if versionRegex.MatchString(element) {
-				tmp, err := getImageFromVersion(element)
+		for _, obj := range objs {
+			result, err := watcher.GetJSONPath(resource.Path, obj)
+			if err != nil {
+				logVersion.Error(err, "Error when looking for path. Continue", "name", obj.GetName(), "path", resource.Path)
+				continue
+			}
+			for _, element := range result {
+				var image string
+				if versionRegex.MatchString(element) {
+					tmp, err := getImageFromVersion(element)
+					if err != nil {
+						return nil, err
+					}
+					logVersion.Info("Version from regex", "name", obj.GetName(), "element", element)
+					image = tmp
+				} else if strings.Contains(element, "@") || strings.Contains(element, ":") {
+					logVersion.Info("Version from image", "name", obj.GetName(), "element", element)
+					image = element
+				} else {
+					return nil, fmt.Errorf("format error. %s is not a valid image/version", element)
+				}
+				info, err := getVersionInfoFromImage(image, r.reg)
 				if err != nil {
 					return nil, err
 				}
-				logVersion.Info("Version from regex", "element", element)
-				image = tmp
-			} else if strings.Contains(element, "@") || strings.Contains(element, ":") {
-				logVersion.Info("Version from image", "element", element)
-				image = element
-			} else {
-				return nil, fmt.Errorf("format error. %s is not a valid image/version", element)
+				versionMap[info.ClusterVersion] = info
 			}
-			info, err := getVersionInfoFromImage(image, r.reg)
-			if err != nil {
-				return nil, err
-			}
-			versionMap[info.ClusterVersion] = info
 		}
 	}
 	return versionMap, nil

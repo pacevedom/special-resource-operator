@@ -249,8 +249,6 @@ func (w *watcher) mapper(o client.Object) []reconcile.Request {
 	wrObj := WatchedResource{
 		ApiVersion: apiVer,
 		Kind:       gvk.Kind,
-		Name:       o.GetName(),
-		Namespace:  o.GetNamespace(),
 	}
 
 	crsToTrigger := []reconcile.Request{}
@@ -262,7 +260,14 @@ func (w *watcher) mapper(o client.Object) []reconcile.Request {
 		return crsToTrigger
 	}
 
-	if paths, ok := w.watchedResToPaths[wrObj]; ok {
+	paths, ok := w.watchedResToPaths[wrObj]
+	if !ok {
+		wrObj.Name = o.GetName()
+		wrObj.Namespace = o.GetNamespace()
+		paths, ok = w.watchedResToPaths[wrObj]
+	}
+	if ok {
+		w.log.Info("ok", "paths", paths, "name", o.GetName())
 		for _, path := range paths {
 			// Get current value of property at path
 			vals, err := GetJSONPath(path, *unstr)
