@@ -115,26 +115,30 @@ func getAllResources(kind, apiVersion, namespace, name string) ([]unstructured.U
 	return []unstructured.Unstructured{obj}, err
 }
 
-func filterResources(selector srov1beta1.SpecialResourceModuleSelector, objs []unstructured.Unstructured) ([]unstructured.Unstructured, error) {
-	//TODO make the selector a list
-	if selector.Path == "" || selector.Value == "" {
+func filterResources(selectors []srov1beta1.SpecialResourceModuleSelector, objs []unstructured.Unstructured) ([]unstructured.Unstructured, error) {
+	if len(selectors) == 0 {
 		return objs, nil
 	}
 	filteredObjects := make([]unstructured.Unstructured, 0)
-	for _, obj := range objs {
-		candidates, err := watcher.GetJSONPath(selector.Path, obj)
-		if err != nil {
-			return filteredObjects, err
-		}
-		found := false
-		for _, candidate := range candidates {
-			if candidate == selector.Value {
-				found = true
-				break
+	for _, selector := range selectors {
+		for _, obj := range objs {
+			candidates, err := watcher.GetJSONPath(selector.Path, obj)
+			if err != nil {
+				return filteredObjects, err
 			}
-		}
-		if found {
-			filteredObjects = append(filteredObjects, obj)
+			found := false
+			for _, candidate := range candidates {
+				if candidate == selector.Value {
+					found = true
+					break
+				}
+			}
+			if selector.Exclude {
+				found = !found
+			}
+			if found {
+				filteredObjects = append(filteredObjects, obj)
+			}
 		}
 	}
 	return filteredObjects, nil
@@ -250,6 +254,7 @@ func (r *SpecialResourceModuleReconciler) getOCPVersions(watchList []srov1beta1.
 		logVersion.Info("pre filter", "len", len(objs))
 		objs, err = filterResources(resource.Selector, objs)
 		if err != nil {
+			logVersion.Error(err, "something is quite off")
 			return nil, err
 		}
 		logVersion.Info("post filter", "len", len(objs))
@@ -436,6 +441,7 @@ func (r *SpecialResourceModuleReconciler) Reconcile(ctx context.Context, req ctr
 
 	if resource.GetDeletionTimestamp() != nil {
 		logModule.Info("Deleted resource")
+		//TODO i need to clean the watches.
 		return reconcile.Result{}, nil
 	}
 

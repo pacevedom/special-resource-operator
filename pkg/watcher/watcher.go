@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"reflect"
 	"sort"
+	"strings"
 
 	"github.com/go-logr/logr"
 	"github.com/oliveagle/jsonpath"
@@ -50,6 +51,7 @@ func SRMWFromWatchedResourceWithPath(wrp WatchedResourceWithPath) srov1beta1.Spe
 		Name:       wrp.Name,
 		Namespace:  wrp.Namespace,
 		Path:       wrp.Path,
+		//TODO need selector here now.
 	}
 }
 
@@ -91,13 +93,16 @@ type watcher struct {
 }
 
 func checkIfContainsSRM(desiredWatches []srov1beta1.SpecialResourceModuleWatch, currentlyWatched srov1beta1.SpecialResourceModuleWatch) bool {
-	for _, w := range desiredWatches {
+	//TODO need to fix this. what if the watch is shared between different SRMs? It is removed and then added again.
+	// cant have a remove function without ref counting either because of the same reason.
+	/*for _, w := range desiredWatches {
 		if w == currentlyWatched {
 			return true
 		}
 	}
 
-	return false
+	return false*/
+	return true
 }
 
 func (w *watcher) ReconcileWatches(srm srov1beta1.SpecialResourceModule) error {
@@ -260,6 +265,7 @@ func (w *watcher) mapper(o client.Object) []reconcile.Request {
 		return crsToTrigger
 	}
 
+	//TODO cache resources, maybe? take the resourceversion and generation?
 	paths, ok := w.watchedResToPaths[wrObj]
 	if !ok {
 		wrObj.Name = o.GetName()
@@ -307,6 +313,9 @@ func GetJSONPath(path string, obj unstructured.Unstructured) ([]string, error) {
 	}
 	match, err := expression.Lookup(obj.Object)
 	if err != nil {
+		if strings.Contains(err.Error(), "key error") {
+			return nil, nil
+		}
 		return nil, err
 	}
 	switch reflect.TypeOf(match).Kind() {

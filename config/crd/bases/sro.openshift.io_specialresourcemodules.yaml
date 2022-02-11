@@ -94,15 +94,19 @@ spec:
                     path:
                       type: string
                     selector:
-                      properties:
-                        path:
-                          type: string
-                        value:
-                          type: string
-                      required:
-                      - path
-                      - value
-                      type: object
+                      items:
+                        properties:
+                          exclude:
+                            type: boolean
+                          path:
+                            type: string
+                          value:
+                            type: string
+                        required:
+                        - path
+                        - value
+                        type: object
+                      type: array
                   required:
                   - apiVersion
                   - kind

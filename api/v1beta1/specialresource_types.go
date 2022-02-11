@@ -180,6 +180,8 @@ type SpecialResourceModuleSelector struct {
 	Path string `json:"path"`
 	// +kubebuilder:validation:Required
 	Value string `json:"value"`
+	// +kubebuilder:validation:Optional
+	Exclude bool `json:"exclude"`
 }
 
 type SpecialResourceModuleWatch struct {
@@ -194,7 +196,7 @@ type SpecialResourceModuleWatch struct {
 	// +kubebuilder:validation:Required
 	Path string `json:"path"`
 	// +kubebuilder:validation:Optional
-	Selector SpecialResourceModuleSelector `json:"selector,omitempty"`
+	Selector []SpecialResourceModuleSelector `json:"selector,omitempty"`
 }
 
 type SpecialResourceModuleSpec struct {
