@@ -83,16 +83,24 @@ spec:
         value: "1.6.4"
     registry: quay.io/pacevedo
   watch:
+    # Select label openshiftVersion from ManagedCluster resource spoke1.
     - path: "$.metadata.labels.openshiftVersion"
       apiVersion: cluster.open-cluster-management.io/v1
       kind: ManagedCluster
       name: spoke1
-      namespace: ""
+    # Select label openshiftVersion from all entries defined in ManagedCluster.
     - path: "$.metadata.labels.openshiftVersion"
       apiVersion: cluster.open-cluster-management.io/v1
       kind: ManagedCluster
-      name: spoke2
-      namespace: ""
+    # Select label openshiftVersion from any ManagedCluster resource that does not have
+    # a label called example set to some-value.
+    - path: "$.metadata.labels.openshiftVersion"
+      apiVersion: cluster.open-cluster-management.io/v1
+      kind: ManagedCluster
+      selector:
+        - path: "$.metadata.labels.example"
+          value: some-value
+          exclude: true
 ```
 
 If we take a close look at the new section we see we can specify lists of resources. Each of these includes:
@@ -101,6 +109,10 @@ If we take a close look at the new section we see we can specify lists of resour
 * `kind`: The `kind` of the resource we want to watch. Mandatory.
 * `name`: The `name` of the resource we want to watch. If not provided it will watch on all resources sharing `apiVersion` and `kind`, irrespective of names. Optional.
 * `namespace`: The `namespace` of the resource we want to watch. Optional.
+* `selector`: Filter which of the resources defined above will be selected to read its `path`. List format, entries are ORed.
+  * `path`: Jsonpath pointing to a valid value in the resource. Mandatory.
+  * `value`: The value that the `path` should hold. Mandatory.
+  * `exclude`: Whether a match should be selected or excluded. Optional.
 
 With this we are able to watch any resource in the cluster only needing list permissions in RBAC. This means there is no specific code/support for any of the resources we can watch in SRO.
 
