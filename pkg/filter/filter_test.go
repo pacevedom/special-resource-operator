@@ -32,8 +32,6 @@ var (
 	f             filter
 )
 
-//TODO need constants for the owned label and kind. or use the ones I already have.
-
 func TestFilter(t *testing.T) {
 	RegisterFailHandler(Fail)
 	BeforeEach(func() {
@@ -46,7 +44,8 @@ func TestFilter(t *testing.T) {
 			lifecycle:  mockLifecycle,
 			storage:    mockStorage,
 			kernelData: mockKernel,
-			//TODO need kind and owned label.
+			kind:       Kind,
+			ownedLabel: OwnedLabel,
 		}
 	})
 
@@ -74,7 +73,7 @@ var _ = Describe("IsSpecialResource", func() {
 			"Pod owned by SRO",
 			&corev1.Pod{
 				ObjectMeta: metav1.ObjectMeta{
-					Labels: map[string]string{ownedLabel: "true"}, //TODO need something to fix this.
+					Labels: map[string]string{OwnedLabel: "true"},
 				},
 			},
 			BeFalse(),
@@ -118,7 +117,7 @@ var _ = Describe("Owned", func() {
 			&corev1.Pod{
 				ObjectMeta: metav1.ObjectMeta{
 					OwnerReferences: []metav1.OwnerReference{
-						{Kind: kind},
+						{Kind: Kind},
 					},
 				},
 			},
@@ -161,7 +160,7 @@ var _ = Describe("Predicate", func() {
 				&corev1.Pod{
 					ObjectMeta: metav1.ObjectMeta{
 						OwnerReferences: []metav1.OwnerReference{
-							{Kind: kind},
+							{Kind: Kind},
 						},
 					},
 				},

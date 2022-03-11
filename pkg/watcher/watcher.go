@@ -11,7 +11,7 @@ import (
 	"github.com/go-logr/logr"
 	"github.com/oliveagle/jsonpath"
 	srov1beta1 "github.com/openshift-psap/special-resource-operator/api/v1beta1"
-	"github.com/openshift-psap/special-resource-operator/pkg/color"
+	"github.com/openshift-psap/special-resource-operator/pkg/utils"
 	"k8s.io/apimachinery/pkg/apis/meta/v1/unstructured"
 	"k8s.io/apimachinery/pkg/runtime/schema"
 	"k8s.io/apimachinery/pkg/types"
@@ -77,7 +77,7 @@ type Watcher interface {
 
 func New(ctrl controller.Controller) Watcher {
 	return &watcher{
-		log:               zap.New(zap.UseDevMode(true)).WithName(color.Print("watcher", color.Blue)),
+		log:               zap.New(zap.UseDevMode(true)).WithName(utils.Print("watcher", utils.Blue)),
 		ctrl:              ctrl,
 		watchedResToPaths: make(map[WatchedResource][]string),
 		watchedResToData:  make(map[WatchedResourceWithPath]pathData),

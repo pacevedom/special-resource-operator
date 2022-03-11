@@ -120,7 +120,7 @@ func main() {
 		ClusterInfo:   upgrade.NewClusterInfo(registry.NewRegistry(kubeClient), clusterCluster),
 		Creator:       creator,
 		PollActions:   pollActions,
-		Filter:        filter.NewFilter(lc, st, kernelData),
+		Filter:        filter.NewFilter("", "", lc, st, kernelData), //TODO
 		Finalizer:     finalizers.NewSpecialResourceFinalizer(kubeClient, pollActions),
 		StatusUpdater: state.NewStatusUpdater(kubeClient),
 		Storage:       st,
@@ -139,7 +139,7 @@ func main() {
 	srmReconciler := controllers.NewSpecialResourceModuleReconciler(ctrl.Log,
 		mgr.GetScheme(),
 		registry.Interface,
-		filter.NewFilter(controllers.SRMgvk, controllers.SRMOwnedLabel))
+		filter.NewFilter(controllers.SRMgvk, controllers.SRMOwnedLabel, lc, st, kernelData))
 	if err = srmReconciler.SetupWithManager(mgr); err != nil {
 		setupLog.Error(err, "unable to create module controller", "controller", "SpecialResourceModule")
 		os.Exit(1)

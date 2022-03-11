@@ -31,8 +31,7 @@ type Filter interface {
 	GetMode() string
 }
 
-//TODO I need to pass kind and ownedlabel in here. important for the logic below.
-func NewFilter(lifecycle lifecycle.Lifecycle, storage storage.Storage, kernelData kernel.KernelData) Filter {
+func NewFilter(kind, ownedLabel string, lifecycle lifecycle.Lifecycle, storage storage.Storage, kernelData kernel.KernelData) Filter {
 	return &filter{
 		log:        zap.New(zap.UseDevMode(true)).WithName(utils.Print("filter", utils.Purple)),
 		lifecycle:  lifecycle,

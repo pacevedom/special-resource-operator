@@ -30,13 +30,22 @@ import (
 
 	"github.com/go-logr/logr"
 	srov1beta1 "github.com/openshift-psap/special-resource-operator/api/v1beta1"
+	"github.com/openshift-psap/special-resource-operator/internal/controllers/finalizers"
+	"github.com/openshift-psap/special-resource-operator/internal/controllers/state"
 	"github.com/openshift-psap/special-resource-operator/pkg/assets"
 	"github.com/openshift-psap/special-resource-operator/pkg/clients"
-	"github.com/openshift-psap/special-resource-operator/pkg/color"
+	"github.com/openshift-psap/special-resource-operator/pkg/cluster"
 	"github.com/openshift-psap/special-resource-operator/pkg/filter"
 	"github.com/openshift-psap/special-resource-operator/pkg/helmer"
+	"github.com/openshift-psap/special-resource-operator/pkg/kernel"
+	"github.com/openshift-psap/special-resource-operator/pkg/metrics"
+	"github.com/openshift-psap/special-resource-operator/pkg/poll"
+	"github.com/openshift-psap/special-resource-operator/pkg/proxy"
 	"github.com/openshift-psap/special-resource-operator/pkg/registry"
 	"github.com/openshift-psap/special-resource-operator/pkg/resource"
+	"github.com/openshift-psap/special-resource-operator/pkg/storage"
+	"github.com/openshift-psap/special-resource-operator/pkg/upgrade"
+	"github.com/openshift-psap/special-resource-operator/pkg/utils"
 	"github.com/openshift-psap/special-resource-operator/pkg/watcher"
 	buildv1 "github.com/openshift/api/build/v1"
 	"github.com/pkg/errors"
@@ -87,19 +96,38 @@ type OCPVersionInfo struct {
 
 // SpecialResourceModuleReconciler reconciles a SpecialResourceModule object
 type SpecialResourceModuleReconciler struct {
-	Log     logr.Logger
-	Scheme  *runtime.Scheme
-	reg     registry.Registry
-	filter  filter.Filter
-	watcher watcher.Watcher
+	Log    logr.Logger
+	Scheme *runtime.Scheme
+
+	Metrics         metrics.Metrics
+	Cluster         cluster.Cluster
+	ClusterInfo     upgrade.ClusterInfo
+	Creator         resource.Creator
+	Filter          filter.Filter
+	Finalizer       finalizers.SpecialResourceFinalizer
+	Helmer          helmer.Helmer
+	Assets          assets.Assets
+	PollActions     poll.PollActions
+	StatusUpdater   state.StatusUpdater
+	Storage         storage.Storage
+	KernelData      kernel.KernelData
+	ProxyAPI        proxy.ProxyAPI
+	KubeClient      clients.ClientsInterface
+	Registry        registry.Registry
+	Watcher         watcher.Watcher
+	specialresource srov1beta1.SpecialResource
+	parent          srov1beta1.SpecialResource
+	chart           chart.Chart
+	values          unstructured.Unstructured
+	dependency      srov1beta1.SpecialResourceDependency
 }
 
-func getAllResources(kind, apiVersion, namespace, name string) ([]unstructured.Unstructured, error) {
+func (r *SpecialResourceModuleReconciler) getAllResources(kind, apiVersion, namespace, name string) ([]unstructured.Unstructured, error) {
 	if name == "" {
 		var l unstructured.UnstructuredList
 		l.SetKind(kind)
 		l.SetAPIVersion(apiVersion)
-		err := clients.Interface.List(context.Background(), &l)
+		err := r.KubeClient.List(context.Background(), &l)
 		if err != nil {
 			return nil, err
 		}
@@ -111,11 +139,11 @@ func getAllResources(kind, apiVersion, namespace, name string) ([]unstructured.U
 	obj.SetNamespace(namespace)
 	obj.SetName(name)
 	key := client.ObjectKeyFromObject(&obj)
-	err := clients.Interface.Get(context.Background(), key, &obj)
+	err := r.KubeClient.Get(context.Background(), key, &obj)
 	return []unstructured.Unstructured{obj}, err
 }
 
-func filterResources(selectors []srov1beta1.SpecialResourceModuleSelector, objs []unstructured.Unstructured) ([]unstructured.Unstructured, error) {
+func (r *SpecialResourceModuleReconciler) filterResources(selectors []srov1beta1.SpecialResourceModuleSelector, objs []unstructured.Unstructured) ([]unstructured.Unstructured, error) {
 	if len(selectors) == 0 {
 		return objs, nil
 	}
@@ -144,20 +172,20 @@ func filterResources(selectors []srov1beta1.SpecialResourceModuleSelector, objs 
 	return filteredObjects, nil
 }
 
-func getVersionInfoFromImage(entry string, reg registry.Registry) (OCPVersionInfo, error) {
-	manifestsLastLayer, err := reg.LastLayer(entry)
+func (r *SpecialResourceModuleReconciler) getVersionInfoFromImage(ctx context.Context, entry string) (OCPVersionInfo, error) {
+	manifestsLastLayer, err := r.Registry.LastLayer(ctx, entry)
 	if err != nil {
 		return OCPVersionInfo{}, err
 	}
-	version, dtkURL, err := reg.ReleaseManifests(manifestsLastLayer)
+	version, dtkURL, err := r.Registry.ReleaseManifests(manifestsLastLayer)
 	if err != nil {
 		return OCPVersionInfo{}, err
 	}
-	dtkLastLayer, err := reg.LastLayer(dtkURL)
+	dtkLastLayer, err := r.Registry.LastLayer(ctx, dtkURL)
 	if err != nil {
 		return OCPVersionInfo{}, err
 	}
-	dtkEntry, err := reg.ExtractToolkitRelease(dtkLastLayer)
+	dtkEntry, err := r.Registry.ExtractToolkitRelease(dtkLastLayer)
 	if err != nil {
 		return OCPVersionInfo{}, err
 	}
@@ -237,14 +265,11 @@ func getImageFromVersion(entry string) (string, error) {
 	return imageURL, nil
 }
 
-func (r *SpecialResourceModuleReconciler) getOCPVersions(watchList []srov1beta1.SpecialResourceModuleWatch) (map[string]OCPVersionInfo, error) {
-	logVersion := r.Log.WithName(color.Print("versions", color.Purple))
+func (r *SpecialResourceModuleReconciler) getOCPVersions(ctx context.Context, watchList []srov1beta1.SpecialResourceModuleWatch) (map[string]OCPVersionInfo, error) {
+	logVersion := r.Log.WithName(utils.Print("versions", utils.Purple))
 	versionMap := make(map[string]OCPVersionInfo)
 	for _, resource := range watchList {
-		// get all resources -> filter them -> keep working.
-		// so lets get to it.
-
-		objs, err := getAllResources(resource.Kind, resource.ApiVersion, resource.Namespace, resource.Name)
+		objs, err := r.getAllResources(resource.Kind, resource.ApiVersion, resource.Namespace, resource.Name)
 		if err != nil {
 			if k8serrors.IsNotFound(err) {
 				continue
@@ -252,7 +277,7 @@ func (r *SpecialResourceModuleReconciler) getOCPVersions(watchList []srov1beta1.
 			return nil, err
 		}
 		logVersion.Info("pre filter", "len", len(objs))
-		objs, err = filterResources(resource.Selector, objs)
+		objs, err = r.filterResources(resource.Selector, objs)
 		if err != nil {
 			logVersion.Error(err, "something is quite off")
 			return nil, err
@@ -279,7 +304,7 @@ func (r *SpecialResourceModuleReconciler) getOCPVersions(watchList []srov1beta1.
 				} else {
 					return nil, fmt.Errorf("format error. %s is not a valid image/version", element)
 				}
-				info, err := getVersionInfoFromImage(image, r.reg)
+				info, err := r.getVersionInfoFromImage(ctx, image)
 				if err != nil {
 					return nil, err
 				}
@@ -290,7 +315,7 @@ func (r *SpecialResourceModuleReconciler) getOCPVersions(watchList []srov1beta1.
 	return versionMap, nil
 }
 
-func createNamespace(r srov1beta1.SpecialResourceModule) error {
+func (r *SpecialResourceModuleReconciler) createNamespace(ctx context.Context, resource srov1beta1.SpecialResourceModule) error {
 
 	ns := []byte(`apiVersion: v1
 kind: Namespace
@@ -300,15 +325,15 @@ metadata:
     openshift.io/cluster-monitoring: "true"
   name: `)
 
-	if r.Spec.Namespace != "" {
-		add := []byte(r.Spec.Namespace)
+	if resource.Spec.Namespace != "" {
+		add := []byte(resource.Spec.Namespace)
 		ns = append(ns, add...)
 	} else {
-		r.Spec.Namespace = r.Name
-		add := []byte(r.Spec.Namespace)
+		resource.Spec.Namespace = resource.Name
+		add := []byte(resource.Spec.Namespace)
 		ns = append(ns, add...)
 	}
-	return resource.CreateFromYAML(ns, false, &r, r.Name, "", nil, "", "")
+	return r.Creator.CreateFromYAML(ctx, ns, false, &resource, resource.Name, "", nil, "", "")
 }
 
 func getMetadata(srm srov1beta1.SpecialResourceModule, info OCPVersionInfo) Metadata {
@@ -333,13 +358,13 @@ func getMetadata(srm srov1beta1.SpecialResourceModule, info OCPVersionInfo) Meta
 	}
 }
 
-func reconcileChart(srm *srov1beta1.SpecialResourceModule, metadata Metadata, reconciledInput []string) ([]string, error) {
+func (r *SpecialResourceModuleReconciler) reconcileChart(ctx context.Context, srm *srov1beta1.SpecialResourceModule, metadata Metadata, reconciledInput []string) ([]string, error) {
 	reconciledInputMap := make(map[string]bool)
 	for _, element := range reconciledInput {
 		reconciledInputMap[element] = true
 	}
 	result := make([]string, 0)
-	c, err := helmer.Load(srm.Spec.Chart)
+	c, err := r.Helmer.Load(srm.Spec.Chart)
 	if err != nil {
 		return result, err
 	}
@@ -348,7 +373,7 @@ func reconcileChart(srm *srov1beta1.SpecialResourceModule, metadata Metadata, re
 	nostate.Templates = []*chart.File{}
 	stateYAMLS := []*chart.File{}
 	for _, template := range c.Templates {
-		if assets.ValidStateName(template.Name) {
+		if r.Assets.ValidStateName(template.Name) {
 			if _, ok := reconciledInputMap[template.Name]; !ok {
 				stateYAMLS = append(stateYAMLS, template)
 			} else {
@@ -380,7 +405,7 @@ func reconcileChart(srm *srov1beta1.SpecialResourceModule, metadata Metadata, re
 		if err != nil {
 			return result, err
 		}
-		err = helmer.Run(step, step.Values,
+		err = r.Helmer.Run(ctx, step, step.Values,
 			srm,
 			srm.Name,
 			srm.Spec.Namespace,
@@ -405,28 +430,29 @@ func FindSRM(a []srov1beta1.SpecialResourceModule, x string) (int, bool) {
 	return -1, false
 }
 
-func updateSpecialResourceModuleStatus(resource srov1beta1.SpecialResourceModule) error {
-	return clients.Interface.StatusUpdate(context.Background(), &resource)
+func (r *SpecialResourceModuleReconciler) updateSpecialResourceModuleStatus(resource srov1beta1.SpecialResourceModule) error {
+	return r.KubeClient.StatusUpdate(context.Background(), &resource)
 }
 
+//TODO fix this massively. do something about it, I dont know
 func NewSpecialResourceModuleReconciler(log logr.Logger, scheme *runtime.Scheme, reg registry.Registry, f filter.Filter) SpecialResourceModuleReconciler {
 	return SpecialResourceModuleReconciler{
-		Log:    log,
-		Scheme: scheme,
-		reg:    reg,
-		filter: f,
+		Log:      log,
+		Scheme:   scheme,
+		Registry: reg,
+		Filter:   f,
 	}
 }
 
 // Reconcile Reconiliation entry point
 func (r *SpecialResourceModuleReconciler) Reconcile(ctx context.Context, req ctrl.Request) (ctrl.Result, error) {
-	logModule := r.Log.WithName(color.Print("reconcile: "+req.Name, color.Purple))
+	logModule := r.Log.WithName(utils.Print("reconcile: "+req.Name, utils.Purple))
 	logModule.Info("Reconciling")
 
 	srm := &srov1beta1.SpecialResourceModuleList{}
 
 	opts := []client.ListOption{}
-	err := clients.Interface.List(context.Background(), srm, opts...)
+	err := r.KubeClient.List(context.Background(), srm, opts...)
 	if err != nil {
 		return reconcile.Result{}, err
 	}
@@ -445,15 +471,15 @@ func (r *SpecialResourceModuleReconciler) Reconcile(ctx context.Context, req ctr
 		return reconcile.Result{}, nil
 	}
 
-	if err := r.watcher.ReconcileWatches(resource); err != nil {
+	if err := r.Watcher.ReconcileWatches(resource); err != nil {
 		logModule.Error(err, "failed to update watched resources")
 		return reconcile.Result{}, err
 	}
 
-	_ = createNamespace(resource)
+	_ = r.createNamespace(ctx, resource)
 
 	//TODO cache images, wont change dynamically.
-	clusterVersions, err := r.getOCPVersions(resource.Spec.Watch)
+	clusterVersions, err := r.getOCPVersions(ctx, resource.Spec.Watch)
 	if err != nil {
 		return reconcile.Result{}, err
 	}
@@ -486,12 +512,12 @@ func (r *SpecialResourceModuleReconciler) Reconcile(ctx context.Context, req ctr
 		if data, ok := resource.Status.Versions[element.ClusterVersion]; ok {
 			inputList = data.ReconciledTemplates
 		}
-		reconciledList, err := reconcileChart(&resource, metadata, inputList)
+		reconciledList, err := r.reconcileChart(ctx, &resource, metadata, inputList)
 		resource.Status.Versions[element.ClusterVersion] = srov1beta1.SpecialResourceModuleVersionStatus{
 			ReconciledTemplates: reconciledList,
 			Complete:            len(reconciledList) == 0,
 		}
-		if e := updateSpecialResourceModuleStatus(resource); e != nil {
+		if e := r.updateSpecialResourceModuleStatus(resource); e != nil {
 			return reconcile.Result{}, e
 		}
 		if err != nil {
@@ -506,7 +532,7 @@ func (r *SpecialResourceModuleReconciler) Reconcile(ctx context.Context, req ctr
 
 // SetupWithManager main initalization for manager
 func (r *SpecialResourceModuleReconciler) SetupWithManager(mgr ctrl.Manager) error {
-	platform, err := clients.Interface.GetPlatform()
+	platform, err := r.KubeClient.GetPlatform()
 	if err != nil {
 		return err
 	}
@@ -518,10 +544,10 @@ func (r *SpecialResourceModuleReconciler) SetupWithManager(mgr ctrl.Manager) err
 			WithOptions(controller.Options{
 				MaxConcurrentReconciles: 1,
 			}).
-			WithEventFilter(r.filter.GetPredicates()).
+			WithEventFilter(r.Filter.GetPredicates()).
 			Build(r)
 
-		r.watcher = watcher.New(c)
+		r.Watcher = watcher.New(c)
 		return err
 	}
 	return errors.New("SpecialResourceModules only work in OCP")
